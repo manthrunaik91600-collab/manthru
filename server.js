@@ -364,14 +364,141 @@ async function searchFreeWebBusinesses(query, pageSize = 20, options = {}) {
 }
 
 async function searchRealBusinesses(query, pageSize = 20, options = {}) {
-  if (!query || typeof query !== "string" || !query.trim()) throw new Error("Search query is required.");
+  if (!query || typeof query !== "string" || !query.trim()) {
+    throw new Error("Search query is required.");
+  }
+
   const cleanQuery = query.trim();
   pageSize = [20, 50, 100].includes(Number(pageSize)) ? Number(pageSize) : 20;
-  const targetArea = String(options.targetArea || extractAreaFromQuery(cleanQuery) || "").trim();
-  const targetCategory = String(options.targetCategory || cleanQuery).trim();
-  if (!targetArea || !targetCategory) throw new Error("Target area and business category are both required.");
-  // Search is intentionally API-free: DuckDuckGo public HTML search only. No OpenAI API, Google Maps, Places, or OSM.
-  return await searchFreeWebBusinesses(cleanQuery, pageSize, { ...options, targetArea, targetCategory, strictAreaFilter: options.strictAreaFilter !== false });
+
+  const targetArea = String(
+    options.targetArea || extractAreaFromQuery(cleanQuery) || ""
+  ).trim();
+
+  const targetCategory = String(
+    options.targetCategory || cleanQuery
+  ).trim();
+
+  if (!targetArea || !targetCategory) {
+    throw new Error("Target area and business category are both required.");
+  }
+
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  if (!apiKey) {
+    throw new Error("GOOGLE_MAPS_API_KEY is missing in Render environment variables.");
+  }
+
+  const response = await fetch("https://places.googleapis.com/v1/places:searchText", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": apiKey,
+      "X-Goog-FieldMask":
+        "places.id,places.displayName,places.formattedAddress,places.types,places.businessStatus,places.googleMapsUri"
+    },
+    body: JSON.stringify({
+      textQuery: `${targetCategory} in ${targetArea}, Telangana, India`,
+      pageSize: Math.min(pageSize, 20),
+      languageCode: "en",
+      regionCode: "IN"
+    })
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    console.error("Google Places API error:", response.status, data);
+    throw new Error(
+      data.error?.message || `Google Places API error: ${response.status}`
+    );
+  }
+
+  const normalize = value =>
+    String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+  const leads = [];
+
+  for (const place of data.places || []) {
+    if (!place.id || !place.displayName?.text || !place.formattedAddress) continue;
+    if (place.businessStatus === "CLOSED_PERMANENTLY") continue;
+
+    const name = place.displayName.text;
+    const address = place.formattedAddress;
+
+    if (!normalize(address).includes(normalize(targetArea))) continue;
+
+    let phone = "";
+
+    try {
+      const detailResponse = await fetch(
+        `https://places.googleapis.com/v1/places/${encodeURIComponent(place.id)}`,
+        {
+          headers: {
+            "X-Goog-Api-Key": apiKey,
+            "X-Goog-FieldMask": "nationalPhoneNumber,internationalPhoneNumber"
+          }
+        }
+      );
+
+      const details = await detailResponse.json();
+
+      if (detailResponse.ok) {
+        phone = details.nationalPhoneNumber || details.internationalPhoneNumber || "";
+      } else {
+        console.warn("Phone lookup error:", detailResponse.status, details);
+      }
+    } catch (error) {
+      console.warn("Phone lookup failed:", error.message);
+    }
+
+    const digits = phone.replace(/\D/g, "");
+    const mobile = digits.startsWith("91") && digits.length === 12
+      ? digits.slice(2)
+      : digits.startsWith("0") && digits.length === 11
+        ? digits.slice(1)
+        : digits;
+
+    if (options.onlyWithMobile === true && !/^([6-9])\d{9}$/.test(mobile)) {
+      continue;
+    }
+
+    leads.push({
+      id: `google_${place.id}`,
+      placeId: place.id,
+      name,
+      phone,
+      category: targetCategory,
+      area: targetArea,
+      address,
+      website: place.googleMapsUri || "",
+      googleMapsUri: place.googleMapsUri || "",
+      sourceUrl: place.googleMapsUri || "",
+      whatsappLink: /^([6-9])\d{9}$/.test(mobile)
+        ? `https://wa.me/91${mobile}`
+        : "",
+      source: "Google Places API",
+      status: "New",
+      notes: "Google Places listing; verify contact details before outreach.",
+      searchQuery: cleanQuery
+    });
+
+    if (leads.length >= pageSize) break;
+  }
+
+  return {
+    leads,
+    searchQuery: cleanQuery,
+    targetArea,
+    targetCategory,
+    source: "Google Places API",
+    attribution: "Google Maps business listing",
+    totalFound: leads.length,
+    message: leads.length
+      ? `Found ${leads.length} matching listings.`
+      : `No listings passed the strict ${targetArea} area filter.`,
+    sourcesChecked: ["Google Places Text Search", "Google Place Details"],
+    providersChecked: ["Google Places API"]
+  };
 }
 
 async function generateSpecialDayMarketing(params) {

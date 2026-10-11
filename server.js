@@ -9,9 +9,7 @@ import dotenv2 from "dotenv";
 import dotenv from "dotenv";
 import { GoogleGenAI } from "@google/genai";
 dotenv.config();
-function getMapsApiKey() {
-  return (process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_PLACES_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY || "").trim();
-}
+
 function extractAreaFromAddress(address, fallbackArea) {
   if (fallbackArea && address.toLowerCase().includes(fallbackArea.toLowerCase())) {
     return fallbackArea.charAt(0).toUpperCase() + fallbackArea.slice(1);
@@ -112,6 +110,7 @@ function formatCategory(primaryTypeDisplay, primaryType, types) {
 }
 function categoryMatchGroup(categoryText) {
   const c = String(categoryText || "").toLowerCase().replace(/[_-]+/g, " ").trim();
+  if (/\b(bank|banks|bank branch|bank branches|atm)\b/.test(c)) return "bank";
   if (/\b(kirana|grocery|groceries|provision|general store|general stores|supermarket|convenience store|convenience|food store|minimarket)\b/.test(c)) return "grocery";
   if (/\b(gold|jewel|jewellery|jewelry|jeweler|jeweller|ornament)\b/.test(c)) return "jewellery";
   if (/\b(mobile|cell phone|smartphone|phone shop|mobile phone)\b/.test(c)) return "mobile";
@@ -132,7 +131,8 @@ function matchesRequestedCategory(name, categoryText, typeValues = []) {
   const haystack = [name, ...(Array.isArray(typeValues) ? typeValues : [typeValues])]
     .filter(Boolean).join(" ").toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
   const patterns = {
-    grocery: /\b(kirana|grocery|groceries|supermarket|convenience store|convenience|general store|provision store|provision shop|food store|grocery store|minimarket|mini market)\b/,
+    bank: /\b(bank|bank branch|atm)\b/,
+    grocery: /\b(kirana|grocery|groceries|supermarket|convenience store|convenience|general store|general|provision store|provision shop|food store|grocery store|minimarket|mini market|greengrocer|wholesale)\b/,
     jewellery: /\b(gold|jewel|jewellery|jewelry|jeweller|jeweler|ornament)\b/,
     mobile: /\b(mobile phone|mobile|cell phone|smartphone|telecom shop|mobile phone store)\b/,
     computer: /\b(computer|laptop|it store|computer store|computer shop)\b/,
@@ -143,10 +143,10 @@ function matchesRequestedCategory(name, categoryText, typeValues = []) {
     healthcare: /\b(hospital|clinic|doctor|medical centre|medical center)\b/,
     hardware: /\b(hardware|building material|paint shop|electrical shop)\b/
   };
-  // Google Places often returns canonical type IDs such as grocery_store / food_store.
   const typeText = (Array.isArray(typeValues) ? typeValues : [typeValues]).filter(Boolean)
     .join(" ").toLowerCase().replace(/[_-]+/g, " ");
   const typePatterns = {
+    bank: /\b(bank|atm)\b/,
     grocery: /\b(grocery store|food store|supermarket|convenience store|general store|provision store)\b/,
     jewellery: /\b(jewelry store|jewellery store)\b/,
     mobile: /\b(cell phone store|mobile phone store)\b/,
@@ -169,463 +169,153 @@ function isValidIndianMobile(phone) {
   return /^[6-9]\d{9}$/.test(digits);
 }
 
-async function searchOpenStreetMap(query, pageSize = 20, options = {}) {
-  const targetArea = (options.targetArea || extractAreaFromQuery(query) || "").trim();
-  const category = (options.targetCategory || query).trim();
-  if (!targetArea) {
-    const e = new Error("Enter a target area/locality so the public business directory can search nearby listings.");
-    e.status = 400; e.code = "AREA_REQUIRED"; throw e;
+function decodeHtmlEntities(value = "") {
+  return String(value).replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#x27;|&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)));
+}
+function stripHtml(value = "") {
+  return decodeHtmlEntities(String(value).replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim());
+}
+function unescapeSearchUrl(href = "") {
+  const raw = decodeHtmlEntities(href);
+  try {
+    const u = new URL(raw.startsWith("//") ? `https:${raw}` : raw, "https://html.duckduckgo.com");
+    const redirected = u.searchParams.get("uddg");
+    return redirected ? decodeURIComponent(redirected) : u.href;
+  } catch { return ""; }
+}
+function pickPublicMobile(text = "") {
+  const matches = String(text).match(/(?:\+?91[\s().-]*)?(?:0[\s().-]*)?[6-9](?:[\s().-]*\d){9}/g) || [];
+  for (const candidate of matches) {
+    const digits = candidate.replace(/\D/g, "");
+    const ten = digits.length > 10 ? digits.slice(-10) : digits;
+    if (/^[6-9]\d{9}$/.test(ten)) return ten;
   }
-  // Use multiple free geocoders. Nominatim has a strict public rate limit and
-  // may return HTTP 429; that must not immediately break business discovery.
-  let lat = NaN, lon = NaN, geocodeErrors = [];
-  const geocodeQueries = [targetArea + ", Telangana, India", targetArea + ", India"];
-  for (const geocodeQuery of geocodeQueries) {
-    try {
-      const geocodeUrl = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=" + encodeURIComponent(geocodeQuery);
-      const geoRes = await fetch(geocodeUrl, {
-        headers: { "User-Agent": "ManThruBusinessDiscovery/1.2 (public business discovery; contact: support@manthru.in)", "Accept": "application/json" },
-        signal: AbortSignal.timeout(8000)
-      });
-      if (!geoRes.ok) { geocodeErrors.push("Nominatim HTTP " + geoRes.status); }
-      else {
-        const geo = await geoRes.json();
-        if (Array.isArray(geo) && geo.length && Number.isFinite(Number(geo[0].lat)) && Number.isFinite(Number(geo[0].lon))) {
-          lat = Number(geo[0].lat); lon = Number(geo[0].lon); break;
-        }
-      }
-    } catch (e) { geocodeErrors.push("Nominatim: " + (e.message || "request failed")); }
-  }
-  // Photon is an independent free geocoder fallback for Nominatim throttling.
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-    try {
-      const photonUrl = "https://photon.komoot.io/api/?limit=1&q=" + encodeURIComponent(targetArea + ", Telangana, India");
-      const photonRes = await fetch(photonUrl, { headers: { "Accept": "application/json", "User-Agent": "ManThruBusinessDiscovery/1.2" }, signal: AbortSignal.timeout(8000) });
-      if (!photonRes.ok) geocodeErrors.push("Photon HTTP " + photonRes.status);
-      else {
-        const photon = await photonRes.json();
-        const coords = photon && photon.features && photon.features[0] && photon.features[0].geometry && photon.features[0].geometry.coordinates;
-        if (Array.isArray(coords) && coords.length >= 2 && Number.isFinite(Number(coords[0])) && Number.isFinite(Number(coords[1]))) {
-          lon = Number(coords[0]); lat = Number(coords[1]);
-        }
-      }
-    } catch (e) { geocodeErrors.push("Photon: " + (e.message || "request failed")); }
-  }
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-    const e = new Error("Could not locate " + targetArea + " using the free geocoding services. They may be temporarily busy; please try again in a few minutes.");
-    e.status = 503; e.code = "GEOCODING_TEMPORARILY_UNAVAILABLE"; e.details = geocodeErrors.join("; "); throw e;
-  }
-  const c = category.toLowerCase();
-  const limit = Math.min(Math.max(Number(pageSize) || 20, 1), 100);
-  // Try a focused category first, then broaden to nearby named shops and businesses.
-  // Public OSM coverage is uneven; one empty category query must not end the search.
-  let specific = '"shop"';
-  if (/kirana|grocery|provision|general store|supermarket/.test(c)) specific = '"shop"~"convenience|supermarket|general|greengrocer|wholesale|food"';
-  else if (/gold|jewel|ornament/.test(c)) specific = '"shop"~"jewelry|jewellery|gold"';
-  else if (/mobile|phone|electronics/.test(c)) specific = '"shop"~"mobile_phone|electronics|computer"';
-  else if (/medical|pharmacy|chemist/.test(c)) specific = '"shop"="chemist"';
-  else if (/restaurant|hotel|cafe|food/.test(c)) specific = '"amenity"~"restaurant|cafe|fast_food"';
-  else if (/salon|beauty|parlour|parlor/.test(c)) specific = '"shop"~"hairdresser|beauty"';
-  else if (/school|college|education/.test(c)) specific = '"amenity"~"school|college|university"';
-  else if (/hospital|clinic|doctor/.test(c)) specific = '"amenity"~"hospital|clinic|doctors"';
-  const stages = [
-    { radius: 7000, filter: specific },
-    { radius: 15000, filter: specific },
-    { radius: 10000, filter: '"shop"' },
-    { radius: 15000, filter: '"amenity"~"marketplace|restaurant|cafe|fast_food|pharmacy|bank|fuel|school|clinic|hospital"' }
-  ];
-  const endpoints = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"];
-  let elements = [], lastError = null, usedFallback = false;
-  const seenElements = new Set();
-  for (let stageIndex = 0; stageIndex < stages.length; stageIndex++) {
-    const stage = stages[stageIndex];
-    const overpassQuery = '[out:json][timeout:25];(nwr(around:' + stage.radius + ',' + lat + ',' + lon + ')[' + stage.filter + '];);out center tags ' + limit + ';';
-    let data = null;
-    for (const endpoint of endpoints) {
+  return "";
+}
+async function searchFreeWebBusinesses(query, pageSize = 20, options = {}) {
+  const targetArea = String(options.targetArea || extractAreaFromQuery(query) || "").trim();
+  const targetCategory = String(options.targetCategory || query).trim();
+  const strictArea = options.strictAreaFilter !== false;
+  const onlyWithMobile = options.onlyWithMobile === true;
+  const clean = (v) => String(v || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const queries = [
+    `"${targetArea}" "${targetCategory}" phone`,
+    `${targetCategory} in ${targetArea} contact number`,
+    `site:justdial.com ${targetArea} ${targetCategory}`,
+    `site:indiamart.com ${targetArea} ${targetCategory}`
+  ].filter(Boolean);
+  const found = [];
+  const seenUrls = new Set();
+  for (const q of queries) {
+    if (found.length >= pageSize) break;
+    const searchUrls = [
+      `https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`,
+      `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(q)}`
+    ];
+    let html = "";
+    for (const searchUrl of searchUrls) {
       try {
-        const r = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8", "User-Agent": "ManThruBusinessDiscovery/1.1 (public business listings)" },
-          body: "data=" + encodeURIComponent(overpassQuery),
-          signal: AbortSignal.timeout(30000)
-        });
-        if (!r.ok) { lastError = new Error("OpenStreetMap query failed (HTTP " + r.status + ")"); continue; }
-        data = await r.json();
-        break;
-      } catch (e) { lastError = e; }
+        const response = await fetch(searchUrl, { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36", "Accept-Language": "en-IN,en;q=0.9", "Accept": "text/html,application/xhtml+xml" }, signal: AbortSignal.timeout(12000), redirect: "follow" });
+        if (response.ok) {
+          const candidate = await response.text();
+          if (/result__a|result-link|result-link/.test(candidate)) { html = candidate; break; }
+        }
+      } catch (e) { console.warn("Free web search endpoint failed:", e.message); }
     }
-    if (!data) continue;
-    const batch = Array.isArray(data.elements) ? data.elements : [];
-    for (const el of batch) {
-      const key = el.type + '_' + el.id;
-      if (!seenElements.has(key)) { seenElements.add(key); elements.push(el); }
-    }
-    // Do not stop merely because Overpass returned raw elements: many are unnamed
-    // map objects and get discarded below. Continue broader stages until enough
-    // usable, named results (respecting the phone filter when enabled) are found.
-    const usableCount = elements.filter((el) => {
-      const tags = el.tags || {};
-      const name = tags.name || tags["name:en"];
-      if (!name) return false;
-      if (options.onlyWithMobile) {
-        return !!(tags.phone || tags["contact:phone"] || tags["contact:mobile"]);
+    if (!html) continue;
+    // Parse result anchors independently of DuckDuckGo's changing wrapper classes.
+    const anchors = [...html.matchAll(/<a\b([^>]*class=["'][^"']*(?:result__a|result-link)[^"']*["'][^>]*)>([\s\S]*?)<\/a>/gi)];
+    for (const match of anchors) {
+      if (found.length >= pageSize) break;
+      const attrs = match[1] || "";
+      const hrefMatch = attrs.match(/href=["']([^"']+)["']/i);
+      if (!hrefMatch) continue;
+      const sourceUrl = unescapeSearchUrl(hrefMatch[1]);
+      if (!sourceUrl || !/^https?:\/\//i.test(sourceUrl) || /duckduckgo\.com\/(?:y\.js|html|lite|l\/)/i.test(sourceUrl) || seenUrls.has(sourceUrl)) continue;
+      seenUrls.add(sourceUrl);
+      const name = stripHtml(match[2]).replace(/\s+[|–-]\s+[^|–-]{2,70}$/, "").trim();
+      const start = Math.max(html.lastIndexOf('<div class="result', match.index), html.lastIndexOf('<tr', match.index), match.index - 300);
+      const nextA = html.indexOf(match[0], match.index) + match[0].length;
+      const endCandidates = [html.indexOf('<div class="result', nextA), html.indexOf('<tr', nextA) ].filter(x => x >= 0);
+      const end = endCandidates.length ? Math.min(...endCandidates) : Math.min(html.length, nextA + 1800);
+      const block = html.slice(Math.max(0, start), Math.max(nextA, end));
+      const snippetMatch = block.match(/<(?:a|div|td)[^>]*class=["'][^"']*result__snippet[^"']*["'][^>]*>([\s\S]*?)<\/(?:a|div|td)>/i);
+      const snippet = stripHtml(snippetMatch ? snippetMatch[1] : block);
+      if (!name || !snippet) continue;
+      let pageText = `${name} ${snippet}`;
+      let pageHtml = "";
+      try {
+        const pageRes = await fetch(sourceUrl, { headers: { "User-Agent": "Mozilla/5.0 (compatible; ManThruPublicListingSearch/1.0)", "Accept-Language": "en-IN,en;q=0.9" }, signal: AbortSignal.timeout(7000), redirect: "follow" });
+        if (pageRes.ok && /text\/html/i.test(pageRes.headers.get("content-type") || "text/html")) {
+          pageHtml = (await pageRes.text()).slice(0, 1200000);
+          pageText += " " + stripHtml(pageHtml).slice(0, 45000);
+        }
+      } catch { /* A search snippet can still be evaluated, but never invent missing fields. */ }
+      const areaMentioned = targetArea && clean(pageText).includes(clean(targetArea));
+      if (strictArea && !areaMentioned) continue;
+      if (!matchesRequestedCategory(name, targetCategory, [snippet, pageText.slice(0, 1200)])) continue;
+      const mobile = pickPublicMobile(pageText);
+      if (onlyWithMobile && !mobile) continue;
+      let address = "";
+      const jsonLd = [...pageHtml.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)].map(m => m[1]);
+      for (const raw of jsonLd) {
+        try {
+          const data = JSON.parse(raw);
+          const nodes = Array.isArray(data) ? data : [data, ...(Array.isArray(data["@graph"]) ? data["@graph"] : [])];
+          for (const node of nodes) {
+            const addr = node.address;
+            if (typeof addr === "string") address = addr;
+            else if (addr && typeof addr === "object") address = [addr.streetAddress, addr.addressLocality, addr.addressRegion, addr.postalCode].filter(Boolean).join(", ");
+            if (address) break;
+          }
+        } catch { /* malformed or unrelated JSON-LD */ }
+        if (address) break;
       }
-      return true;
-    }).length;
-    if (usableCount >= limit) break;
-    if (stageIndex > 0 && usableCount > 0) usedFallback = true;
-  }
-  if (!elements.length && lastError) {
-    const e = new Error("The free public business-map servers are busy right now (rate limit/temporary outage). Please retry after 1–2 minutes; no paid API key is required.");
-    e.status = 502;
-    throw e;
-  }
-  const seen = new Set(), leads = [];
-  for (const el of elements) {
-    const t = el.tags || {}, name = t.name || t["name:en"];
-    if (!name) continue;
-    const osmCategory = t.shop || t.amenity || t.office || t.craft || "";
-    if (!matchesRequestedCategory(name, category, [osmCategory, t["shop:type"], t["cuisine"]])) continue;
-    const address = [t["addr:housenumber"], t["addr:street"], t["addr:suburb"], t["addr:city"] || targetArea, t["addr:state"] || "Telangana"].filter(Boolean).join(", ");
-    const key = (name + "|" + address).toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const phone = t.phone || t["contact:phone"] || t["contact:mobile"] || "";
-    if (options.onlyWithMobile && !phone) continue;
-    const rawCategory = osmCategory || "Business";
-    leads.push({ id: "osm_" + el.type + "_" + el.id, placeId: "", name, phone, category: String(rawCategory).replace(/_/g, " "), area: targetArea, address, website: t.website || t["contact:website"] || "", rating: null, reviews: 0, isVerified: false, source: "OpenStreetMap" });
-    if (leads.length >= limit) break;
-  }
-  const message = leads.length
-    ? `Found ${leads.length} public map listings${usedFallback ? ' using a broader nearby search' : ''}. Phone numbers are shown only when published in the source data.`
-    : `No named public OpenStreetMap listings matched ${category} near ${targetArea}. Try turning off “Only With Mobile Numbers” or a broader nearby area; public map coverage may be limited.`;
-  return { leads, searchQuery: query, targetArea, source: "OpenStreetMap public listings", attribution: "© OpenStreetMap contributors", totalFound: leads.length, message };
-}
-
-async function searchLegacyPlacesFallback(query, pageSize, options, apiKey) {
-  // Secondary Google provider path for deployments where Places API (New) quota is exhausted
-  // but the project's legacy Places Text Search endpoint remains enabled and available.
-  const area = String(options?.targetArea || extractAreaFromQuery(query) || '').trim();
-  const category = String(options?.targetCategory || query).trim();
-  const q = area && !query.toLowerCase().includes(area.toLowerCase()) ? `${category} in ${area}` : query;
-  const endpoint = 'https://maps.googleapis.com/maps/api/place/textsearch/json?query=' + encodeURIComponent(q) + '&region=in&key=' + encodeURIComponent(apiKey);
-  const response = await fetch(endpoint, { headers: { 'Accept': 'application/json' } });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok || !['OK', 'ZERO_RESULTS'].includes(payload.status)) {
-    throw new Error(`Legacy Places fallback unavailable (${response.status || payload.status || 'unknown'}): ${payload.error_message || payload.status || 'request failed'}`);
-  }
-  const raw = Array.isArray(payload.results) ? payload.results : [];
-  const cap = Math.min(Math.max(Number(pageSize) || 20, 1), 100);
-  const places = [];
-  for (const item of raw.slice(0, Math.min(cap, 20))) {
-    let details = {};
-    // Phone numbers are not returned by Text Search. Fetch public Place Details server-side.
-    try {
-      const dUrl = 'https://maps.googleapis.com/maps/api/place/details/json?place_id=' + encodeURIComponent(item.place_id) + '&fields=formatted_phone_number,international_phone_number,website,url,business_status,types,name,formatted_address&key=' + encodeURIComponent(apiKey);
-      const dRes = await fetch(dUrl, { headers: { 'Accept': 'application/json' } });
-      const dPayload = await dRes.json().catch(() => ({}));
-      if (dRes.ok && dPayload.status === 'OK') details = dPayload.result || {};
-    } catch (e) { /* keep text-search result; strict mobile filter below will discard missing phones */ }
-    const rawPhone = details.international_phone_number || details.formatted_phone_number || '';
-    places.push({
-      id: item.place_id,
-      displayName: { text: details.name || item.name || '' },
-      formattedAddress: details.formatted_address || item.formatted_address || '',
-      internationalPhoneNumber: rawPhone,
-      nationalPhoneNumber: details.formatted_phone_number || rawPhone,
-      websiteUri: details.website || '',
-      googleMapsUri: details.url || '',
-      primaryType: (details.types || item.types || [])[0] || '',
-      types: details.types || item.types || [],
-      businessStatus: details.business_status || 'OPERATIONAL'
-    });
-  }
-  return places;
-}
-
-async function searchRealBusinesses(query, pageSize = 20, options) {
-  if (!query || typeof query !== "string" || !query.trim()) {
-    throw new Error("Search query is required.");
-  }
-  const cleanQuery = query.trim();
-  pageSize = [20, 50, 100].includes(Number(pageSize)) ? Number(pageSize) : 20;
-  const targetArea = (options?.targetArea || extractAreaFromQuery(cleanQuery) || "").trim();
-  const strictFilter = options?.strictAreaFilter !== false;
-  const onlyWithMobile = options?.onlyWithMobile === true;
-  const apiKey = getMapsApiKey();
-  if (!apiKey) {
-    return await searchOpenStreetMap(cleanQuery, pageSize, options || {});
-  }
-  const url = "https://places.googleapis.com/v1/places:searchText";
-  const fieldMask = [
-    "places.id",
-    "places.displayName",
-    "places.formattedAddress",
-    "places.nationalPhoneNumber",
-    "places.internationalPhoneNumber",
-    "places.websiteUri",
-    "places.rating",
-    "places.userRatingCount",
-    "places.primaryTypeDisplayName",
-    "places.primaryType",
-    "places.types",
-    "places.businessStatus",
-    "places.googleMapsUri",
-    "nextPageToken"
-  ].join(",");
-  let allRawPlaces = [];
-  let pageToken = void 0;
-  let pageCount = 0;
-  const maxPages = pageSize >= 100 ? 5 : pageSize >= 50 ? 3 : 2;
-  do {
-    pageCount++;
-    const reqBody = {
-      textQuery: cleanQuery,
-      pageSize: Math.min(pageSize, 20),
-      languageCode: "en",
-      regionCode: "IN"
-    };
-    if (pageToken) {
-      reqBody.pageToken = pageToken;
-    }
-    try {
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Goog-Api-Key": apiKey,
-          "X-Goog-Maps-Solution-ID": "gmp_git_agentskills_v1",
-          "X-Goog-FieldMask": fieldMask
-        },
-        body: JSON.stringify(reqBody)
+      if (!address) {
+        const meta = pageHtml.match(/<meta[^>]*(?:property|name)=["'](?:og:description|description)["'][^>]*content=["']([^"']+)["']/i);
+        const desc = meta ? decodeHtmlEntities(meta[1]) : snippet;
+        if (targetArea && clean(desc).includes(clean(targetArea)) && /\b(address|located|road|street|nagar|colony|market|main road|near|medchal|locality)\b/i.test(desc)) address = desc.slice(0, 240);
+      }
+      if (!address || !sourceUrl || !/^https?:\/\//i.test(sourceUrl)) continue;
+      if (!name || !targetArea || !targetCategory) continue;
+      const website = /^https?:\/\//i.test(sourceUrl) ? new URL(sourceUrl).origin : "";
+      found.push({
+        id: `freeweb_${Date.now()}_${found.length}`, placeId: "", name,
+        phone: mobile || "", category: targetCategory, area: targetArea,
+        address, website, rating: null, reviewCount: null,
+        operationalStatus: "Public web listing found", googleMapsUri: "", sourceUrl,
+        whatsappLink: mobile ? `https://wa.me/91${mobile}` : "", source: "Free DuckDuckGo public web search",
+        status: "New", notes: "Free public-web result; verify details before outreach.", createdAt: new Date().toISOString(), searchQuery: query
       });
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Google Places Search API error:", response.status, errorText);
-        if (response.status === 401 || response.status === 403) {
-          const err = new Error(
-            "Google Places API key is unauthorized or invalid. Verify that Places API (New) is enabled for your project."
-          );
-          err.status = response.status;
-          err.code = "AUTH_ERROR";
-          throw err;
-        }
-        if (response.status === 429) {
-          const err = new Error(
-            "Google Places API quota exceeded. Please check quota and billing in Google Cloud Console."
-          );
-          err.status = 429;
-          err.code = "QUOTA_EXCEEDED";
-          throw err;
-        }
-        break;
-      }
-      const data = await response.json();
-      const rawPlaces = data.places || [];
-      allRawPlaces = [...allRawPlaces, ...rawPlaces];
-      pageToken = data.nextPageToken;
-      if (pageToken && pageCount < maxPages && allRawPlaces.length < pageSize) {
-        await new Promise((r) => setTimeout(r, 1500));
-      } else {
-        break;
-      }
-    } catch (err) {
-      if (err.code === "AUTH_ERROR" || err.code === "QUOTA_EXCEEDED") {
-        console.warn("Places API (New) unavailable; trying legacy Google Places before OpenStreetMap:", err.code, err.message);
-        try {
-          const legacyPlaces = await searchLegacyPlacesFallback(cleanQuery, pageSize, options || {}, apiKey);
-          if (legacyPlaces.length) {
-            allRawPlaces = legacyPlaces;
-            pageToken = undefined;
-            break; // continue through the shared category, strict-area and mobile filters below
-          }
-        } catch (legacyError) {
-          console.warn("Legacy Google Places fallback unavailable:", legacyError.message);
-        }
-        try {
-          const fallback = await searchOpenStreetMap(cleanQuery, pageSize, options || {});
-          fallback.source = "OpenStreetMap fallback (Google Places unavailable)";
-          fallback.message = `${fallback.message || ""} Google Places was unavailable (${err.code}); results are from public OpenStreetMap listings.`.trim();
-          return fallback;
-        } catch (fallbackError) {
-          console.error("OpenStreetMap fallback also failed:", fallbackError.message);
-          fallbackError.status = fallbackError.status || 502;
-          fallbackError.code = "ALL_SEARCH_PROVIDERS_FAILED";
-          fallbackError.message = `Google Places failed (${err.code}) and all fallbacks failed: ${fallbackError.message}`;
-          throw fallbackError;
-        }
-      }
-      console.warn("Google Places page fetch warning:", err.message);
-      break;
-    }
-  } while (pageToken && pageCount < maxPages && allRawPlaces.length < pageSize);
-  // Google Text Search returns at most 20 places per page and up to 60 per query.
-  // When the user asks for 50/100, run relevant category synonyms and paginate each
-  // query so phone/area filtering does not leave the table short simply because only
-  // the first page or one wording was searched. All results still come from Google.
-  if (pageSize > 20) {
-    const loc = targetArea || extractAreaFromQuery(cleanQuery) || "";
-    let catClean = (options?.targetCategory || cleanQuery).trim();
-    if (loc) {
-      catClean = catClean.replace(new RegExp(`\\bin\\b\\s*${loc}`, "gi"), "").replace(new RegExp(loc, "gi"), "").trim();
-    }
-    if (!catClean) catClean = cleanQuery;
-    const c = catClean.toLowerCase();
-    let aliases = [];
-    if (/kirana|grocery|provision|general store/.test(c)) aliases = ["kirana stores", "grocery stores", "Indian grocery stores", "provision shops", "provision stores", "general stores", "convenience stores", "supermarkets"];
-    else if (/medical shop|medical store|pharmacy|chemist|drug store/.test(c)) aliases = ["pharmacies", "medical stores", "chemist shops"];
-    else if (/gold shop|gold jewellery|jewellery|jeweler|jeweller/.test(c)) aliases = ["jewellery shops", "gold jewellery stores", "jewellers"];
-    else if (/mobile shop|mobile phone|cell phone/.test(c)) aliases = ["mobile phone stores", "cell phone shops", "mobile dealers"];
-    else if (/restaurant|hotel|cafe|food/.test(c)) aliases = ["restaurants", "cafes", "food outlets"];
-    else if (/school|college|education/.test(c)) aliases = ["schools", "colleges", "educational institutions"];
-    else if (/hardware/.test(c)) aliases = ["hardware stores", "building material shops", "tools stores"];
-    else if (/salon|beauty parlour|beauty parlor/.test(c)) aliases = ["salons", "beauty parlours", "hair salons"];
-    else aliases = [`${catClean} stores`, `${catClean} shops`, `${catClean} dealers`];
-
-    const altQueries = [...new Set(aliases.map(alias => loc ? `${alias} in ${loc}` : alias))];
-    const seenQueryIds = new Set(allRawPlaces.map(p => p.id).filter(Boolean));
-    for (const altQ of altQueries) {
-      let altToken;
-      for (let altPage = 0; altPage < 3; altPage++) {
-        try {
-          const payload = { textQuery: altQ, pageSize: 20, languageCode: "en" };
-          if (altToken) payload.pageToken = altToken;
-          const altRes = await fetch(url, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Goog-Api-Key": apiKey,
-              "X-Goog-Maps-Solution-ID": "gmp_git_agentskills_v1",
-              "X-Goog-FieldMask": fieldMask
-            },
-            body: JSON.stringify(payload)
-          });
-          if (!altRes.ok) break;
-          const altData = await altRes.json();
-          for (const place of (altData.places || [])) {
-            const key = place.id || `${(place.displayName?.text || "").toLowerCase()}_${(place.formattedAddress || "").toLowerCase()}`;
-            if (!seenQueryIds.has(key)) {
-              seenQueryIds.add(key);
-              allRawPlaces.push(place);
-            }
-          }
-          altToken = altData.nextPageToken;
-          if (!altToken) break;
-          await new Promise(resolve => setTimeout(resolve, 1500));
-        } catch (e) {
-          console.warn("Google Places synonym search warning:", e.message);
-          break;
-        }
-      }
     }
   }
-  const seenPlaceKeys = /* @__PURE__ */ new Set();
-  const uniquePlaces = [];
-  for (const p of allRawPlaces) {
-    const k = p.id || `${(p.displayName?.text || "").toLowerCase().trim()}_${(p.formattedAddress || "").toLowerCase().trim()}`;
-    if (!seenPlaceKeys.has(k)) {
-      seenPlaceKeys.add(k);
-      uniquePlaces.push(p);
-    }
-  }
-  const now = (/* @__PURE__ */ new Date()).toISOString();
-  let leads = uniquePlaces.map((place, idx) => {
-    const name = place.displayName?.text || `Business ${idx + 1}`;
-    const rawPhone = place.internationalPhoneNumber || place.nationalPhoneNumber || "";
-    const phone = rawPhone ? rawPhone.trim() : "Not listed by Google Places";
-    const address = place.formattedAddress || `${targetArea || "Local"}, India`;
-    const area = extractAreaFromAddress(address, targetArea);
-    const category = formatCategory(
-      place.primaryTypeDisplayName?.text,
-      place.primaryType,
-      place.types
-    );
-    let website = place.websiteUri || "";
-    if (!website && place.googleMapsUri) {
-      website = place.googleMapsUri;
-    }
-    return {
-      id: place.id || `lead_${Date.now()}_${idx}`,
-      placeId: place.id,
-      name,
-      phone,
-      category,
-      area,
-      address,
-      website,
-      rating: typeof place.rating === "number" ? place.rating : null,
-      reviewCount: typeof place.userRatingCount === "number" ? place.userRatingCount : null,
-      operationalStatus: place.businessStatus === "OPERATIONAL" ? "Operational" : place.businessStatus || "Operational",
-      googleMapsUri: place.googleMapsUri || "",
-      source: "Google Places API",
-      status: "New",
-      notes: phone === "Not listed by Google Places" ? "Phone number not provided in public Google listing" : "",
-      createdAt: now,
-      searchQuery: cleanQuery
-    };
-  });
-  const requestedCategory = (options?.targetCategory || cleanQuery).trim();
-  const leadsBeforeCategoryFilter = leads.length;
-  leads = leads.filter((lead, index) => {
-    const place = uniquePlaces[index];
-    const typeValues = [place?.primaryTypeDisplayName?.text, place?.primaryType, ...(place?.types || [])];
-    return matchesRequestedCategory(lead.name, requestedCategory, [lead.category, ...typeValues]);
-  });
-  const categoryFilteredCount = leads.length;
-  if (targetArea && targetArea.length >= 2 && strictFilter) {
-    const lowerTarget = targetArea.toLowerCase();
-    const strictlyFiltered = leads.filter((l) => {
-      const addr = l.address.toLowerCase();
-      const areaName = l.area.toLowerCase();
-      return addr.includes(lowerTarget) || areaName.includes(lowerTarget);
-    });
-    // Strict Area Lock means exactly that: never fall back to unrelated areas.
-    leads = strictlyFiltered;
-  }
-  if (onlyWithMobile) {
-    leads = leads.filter((l) => {
-      if (!l.phone || l.phone.startsWith("Not listed")) return false;
-      return isValidIndianMobile(l.phone);
-    });
-  }
-  leads = leads.slice(0, Math.min(Math.max(pageSize, 5), 100));
-  let message = "";
-  if (leads.length === 0) {
-    if (leadsBeforeCategoryFilter > 0 && categoryFilteredCount === 0) {
-      message = `Google Places returned listings, but none matched the requested category "${requestedCategory}". Unrelated businesses were filtered out. Try a more common category wording or nearby area.`;
-    } else if (uniquePlaces.length > 0 && onlyWithMobile) {
-      message = `Found ${uniquePlaces.length} matching businesses, but none listed a public phone number. Uncheck "Only With Mobile Numbers" to view all matching listings.`;
-    } else {
-      message = `No businesses found matching "${cleanQuery}" in category "${requestedCategory}". Try a broader area or alternate category wording.`;
-    }
-  } else {
-    message = `Successfully discovered ${leads.length} genuine businesses via Google Places API.`;
-  }
-  if (leads.length === 0) {
-    console.warn("Google Places produced zero matching leads; trying OpenStreetMap fallback.");
-    try {
-      const fallback = await searchOpenStreetMap(cleanQuery, pageSize, options || {});
-      if (fallback.leads && fallback.leads.length > 0) {
-        fallback.source = "OpenStreetMap fallback (no matching Google Places results)";
-        fallback.message = `${fallback.message || ""} Google Places had no matching results; showing public OpenStreetMap listings.`.trim();
-        return fallback;
-      }
-    } catch (fallbackError) {
-      console.warn("OpenStreetMap zero-result fallback failed:", fallbackError.message);
-    }
+  const unique = [];
+  const keys = new Set();
+  for (const lead of found) {
+    const key = `${clean(lead.name)}|${lead.phone}|${clean(lead.address)}`;
+    if (keys.has(key)) continue;
+    keys.add(key); unique.push(lead);
   }
   return {
-    leads,
-    searchQuery: cleanQuery,
-    targetArea: targetArea || void 0,
-    source: "Google Places API (New)",
-    attribution: "Google Maps",
-    totalFound: leads.length,
-    requestedCount: pageSize,
-    returnedCount: leads.length,
-    message: leads.length < pageSize ? `${message} Requested up to ${pageSize}; ${leads.length} matched all selected filters. The source may not have more matching public listings.` : message
+    leads: unique.slice(0, pageSize), searchQuery: query, targetArea, targetCategory,
+    source: "Free DuckDuckGo public web search", attribution: "Public web source URL included per result",
+    totalFound: Math.min(unique.length, pageSize),
+    message: unique.length ? `Found ${Math.min(unique.length, pageSize)} public web listings with source links using a free search provider. Phone numbers are included only when found in fetched public text; verify before outreach.` : "The free search provider returned no listings that met the strict area/category and source checks. This can happen when the provider blocks automated requests or public pages omit contact details; no sample or invented leads were added.",
+    sourcesChecked: queries
   };
 }
+
+async function searchRealBusinesses(query, pageSize = 20, options = {}) {
+  if (!query || typeof query !== "string" || !query.trim()) throw new Error("Search query is required.");
+  const cleanQuery = query.trim();
+  pageSize = [20, 50, 100].includes(Number(pageSize)) ? Number(pageSize) : 20;
+  const targetArea = String(options.targetArea || extractAreaFromQuery(cleanQuery) || "").trim();
+  const targetCategory = String(options.targetCategory || cleanQuery).trim();
+  if (!targetArea || !targetCategory) throw new Error("Target area and business category are both required.");
+  // Search is intentionally API-free: DuckDuckGo public HTML search only. No OpenAI API, Google Maps, Places, or OSM.
+  return await searchFreeWebBusinesses(cleanQuery, pageSize, { ...options, targetArea, targetCategory, strictAreaFilter: options.strictAreaFilter !== false });
+}
+
 async function generateSpecialDayMarketing(params) {
   const { date, businessName, businessType, phone, customInstructions, stylePreset } = params;
   const apiKey = process.env.GEMINI_API_KEY;
@@ -1217,7 +907,8 @@ app.get("/api/health", (req, res) => {
   res.json({
     status: "ok",
     service: "Man Thru Universal Business Lead Tool",
-    hasMapsApiKey: Boolean(process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_PLACES_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY),
+    hasOpenAIKey: false,
+    searchProvider: "Free DuckDuckGo public web search (no OpenAI API, Google Maps, Places, or OSM)",
     timestamp: (/* @__PURE__ */ new Date()).toISOString()
   });
 });

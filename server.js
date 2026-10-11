@@ -457,10 +457,8 @@ async function searchRealBusinesses(query, pageSize = 20, options = {}) {
   const targetArea = String(options.targetArea || extractAreaFromQuery(cleanQuery) || "").trim();
   const targetCategory = String(options.targetCategory || cleanQuery).trim();
   if (!targetArea || !targetCategory) throw new Error("Target area and business category are both required.");
-  // Prefer Google Places when a server-side key is configured; keep free public-web search as fallback when no key is set.
-  if (process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_PLACES_API_KEY) {
-    return await searchGooglePlacesBusinesses(cleanQuery, pageSize, { ...options, targetArea, targetCategory, strictAreaFilter: options.strictAreaFilter !== false });
-  }
+  // Quota-independent lead search: do not call Google Places, which can fail with HTTP 429.
+  // Search public web listings using DuckDuckGo, Bing, and Yahoo; retain strict area/mobile filters.
   return await searchFreeWebBusinesses(cleanQuery, pageSize, { ...options, targetArea, targetCategory, strictAreaFilter: options.strictAreaFilter !== false });
 }
 

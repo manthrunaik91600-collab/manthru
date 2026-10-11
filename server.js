@@ -176,14 +176,45 @@ async function searchOpenStreetMap(query, pageSize = 20, options = {}) {
     const e = new Error("Enter a target area/locality so the public business directory can search nearby listings.");
     e.status = 400; e.code = "AREA_REQUIRED"; throw e;
   }
-  const geocodeUrl = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=" + encodeURIComponent(targetArea + ", Telangana, India");
-  const geoRes = await fetch(geocodeUrl, { headers: { "User-Agent": "ManThruBusinessDiscovery/1.0 (business search)" } });
-  if (!geoRes.ok) throw new Error("OpenStreetMap geocoding service is temporarily unavailable (HTTP " + geoRes.status + ").");
-  const geo = await geoRes.json();
-  if (!Array.isArray(geo) || !geo.length) {
-    return { leads: [], searchQuery: query, targetArea, source: "OpenStreetMap", totalFound: 0, message: `Could not locate ${targetArea}. Try a nearby town or locality.` };
+  // Use multiple free geocoders. Nominatim has a strict public rate limit and
+  // may return HTTP 429; that must not immediately break business discovery.
+  let lat = NaN, lon = NaN, geocodeErrors = [];
+  const geocodeQueries = [targetArea + ", Telangana, India", targetArea + ", India"];
+  for (const geocodeQuery of geocodeQueries) {
+    try {
+      const geocodeUrl = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=" + encodeURIComponent(geocodeQuery);
+      const geoRes = await fetch(geocodeUrl, {
+        headers: { "User-Agent": "ManThruBusinessDiscovery/1.2 (public business discovery; contact: support@manthru.in)", "Accept": "application/json" },
+        signal: AbortSignal.timeout(8000)
+      });
+      if (!geoRes.ok) { geocodeErrors.push("Nominatim HTTP " + geoRes.status); }
+      else {
+        const geo = await geoRes.json();
+        if (Array.isArray(geo) && geo.length && Number.isFinite(Number(geo[0].lat)) && Number.isFinite(Number(geo[0].lon))) {
+          lat = Number(geo[0].lat); lon = Number(geo[0].lon); break;
+        }
+      }
+    } catch (e) { geocodeErrors.push("Nominatim: " + (e.message || "request failed")); }
   }
-  const lat = Number(geo[0].lat), lon = Number(geo[0].lon);
+  // Photon is an independent free geocoder fallback for Nominatim throttling.
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    try {
+      const photonUrl = "https://photon.komoot.io/api/?limit=1&q=" + encodeURIComponent(targetArea + ", Telangana, India");
+      const photonRes = await fetch(photonUrl, { headers: { "Accept": "application/json", "User-Agent": "ManThruBusinessDiscovery/1.2" }, signal: AbortSignal.timeout(8000) });
+      if (!photonRes.ok) geocodeErrors.push("Photon HTTP " + photonRes.status);
+      else {
+        const photon = await photonRes.json();
+        const coords = photon && photon.features && photon.features[0] && photon.features[0].geometry && photon.features[0].geometry.coordinates;
+        if (Array.isArray(coords) && coords.length >= 2 && Number.isFinite(Number(coords[0])) && Number.isFinite(Number(coords[1]))) {
+          lon = Number(coords[0]); lat = Number(coords[1]);
+        }
+      }
+    } catch (e) { geocodeErrors.push("Photon: " + (e.message || "request failed")); }
+  }
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    const e = new Error("Could not locate " + targetArea + " using the free geocoding services. They may be temporarily busy; please try again in a few minutes.");
+    e.status = 503; e.code = "GEOCODING_TEMPORARILY_UNAVAILABLE"; e.details = geocodeErrors.join("; "); throw e;
+  }
   const c = category.toLowerCase();
   const limit = Math.min(Math.max(Number(pageSize) || 20, 1), 100);
   // Try a focused category first, then broaden to nearby named shops and businesses.
@@ -215,7 +246,8 @@ async function searchOpenStreetMap(query, pageSize = 20, options = {}) {
         const r = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8", "User-Agent": "ManThruBusinessDiscovery/1.1 (public business listings)" },
-          body: "data=" + encodeURIComponent(overpassQuery)
+          body: "data=" + encodeURIComponent(overpassQuery),
+          signal: AbortSignal.timeout(30000)
         });
         if (!r.ok) { lastError = new Error("OpenStreetMap query failed (HTTP " + r.status + ")"); continue; }
         data = await r.json();
@@ -244,7 +276,7 @@ async function searchOpenStreetMap(query, pageSize = 20, options = {}) {
     if (stageIndex > 0 && usableCount > 0) usedFallback = true;
   }
   if (!elements.length && lastError) {
-    const e = new Error("Public OpenStreetMap search is temporarily unavailable. Please try again shortly.");
+    const e = new Error("The free public business-map servers are busy right now (rate limit/temporary outage). Please retry after 1–2 minutes; no paid API key is required.");
     e.status = 502;
     throw e;
   }

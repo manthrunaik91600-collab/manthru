@@ -158,6 +158,16 @@ function matchesRequestedCategory(name, categoryText, typeValues = []) {
     healthcare: /\b(hospital|medical clinic|doctor)\b/,
     hardware: /\b(hardware store)\b/
   };
+  // A known category must be supported by the business name or Places type/category;
+  // never substitute the requested category when the provider returned no category.
+  const nameText = String(name || "").toLowerCase().replace(/[_-]+/g, " ");
+  if (group === "mobile") {
+    const storeType = /\b(cell phone store|mobile phone store|mobile phone shop|mobile shop)\b/.test(typeText) ||
+      /\b(cell phone store|mobile phone store|mobile phone shop|mobile shop)\b/.test(String(categoryText || "").toLowerCase());
+    const looksLikeStore = /\b(mobiles?|mobile shop|mobile store|cell phone|smartphone shop)\b/.test(nameText);
+    const serviceOnly = /\b(repair|service|servicing|technician)\b/.test(nameText) && !/\b(sales?|store|shop)\b/.test(nameText);
+    return !serviceOnly && (storeType || looksLikeStore);
+  }
   return !!((patterns[group] && patterns[group].test(haystack)) || (typePatterns[group] && typePatterns[group].test(typeText)));
 }
 
@@ -305,7 +315,7 @@ async function searchFreeWebBusinesses(query, pageSize = 20, options = {}) {
         const normalizedText = clean(pageText);
         const areaMentioned = !!normalizedArea && (` ${normalizedText} `).includes(` ${normalizedArea} `);
         if (strictArea && !areaMentioned) continue;
-        if (!matchesRequestedCategory(name, targetCategory, [snippet, pageText.slice(0, 1800)])) continue;
+        if (!matchesRequestedCategory(name, targetCategory, [snippet, pageText])) continue;
         const mobile = pickPublicMobile(pageText);
         if (onlyWithMobile && !mobile) continue;
         let address = "";
@@ -403,7 +413,7 @@ async function searchGooglePlacesBusinesses(query, pageSize = 20, options = {}) 
         const name = String(place.displayName?.text || "").trim();
         const address = String(place.formattedAddress || "").trim();
         const phone = pickPublicMobile(place.nationalPhoneNumber || place.internationalPhoneNumber || "");
-        const category = String(place.primaryTypeDisplayName?.text || formatCategory("", place.primaryType, place.types) || targetCategory).trim();
+        const category = String(place.primaryTypeDisplayName?.text || formatCategory("", place.primaryType, place.types) || "Business").trim();
         if (!name || !address) continue;
         if (strictArea && !clean(address).includes(clean(targetArea))) continue;
         if (!matchesRequestedCategory(name, targetCategory, [category, ...(place.types || [])])) continue;

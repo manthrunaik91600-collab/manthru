@@ -173,7 +173,7 @@ export async function searchRealBusinesses(
   let allRawPlaces: any[] = [];
   let pageToken: string | undefined = undefined;
   let pageCount = 0;
-  const maxPages = pageSize >= 100 ? 5 : (pageSize >= 50 ? 3 : 2);
+  const maxPages = 5;
 
   do {
     pageCount++;

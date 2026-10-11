@@ -1,7 +1,7 @@
-Man Thru backend search fix
+MAN THRU PUBLIC-WEB SEARCH FALLBACK PATCH
 
-This server.js uses free public-web search (DuckDuckGo HTML/lite) for /api/leads/search and does not call OpenStreetMap/Nominatim/Overpass. It preserves the existing API routes in this supplied server.js source.
+This patch updates server.js only. It preserves the existing routes and the rest of the server file.
+It tries free public HTML search providers (DuckDuckGo, Bing, Yahoo) and parses results more robustly.
+It does not invent business names or phone numbers; phone numbers are populated only when found in fetched public result text/pages. Free providers may still block automated requests or return no matching results.
 
-Install: replace the repository-root server.js only. Do not open this file in a browser. Commit and push the change so Render redeploys.
-
-Important: free public search providers may block automated requests or return no matches. This removes the OSM rate-limit dependency; it cannot guarantee a specific number of leads.
+Install: replace the existing repository server.js with this server.js, commit/push, then wait for Render deploy and test the live site.

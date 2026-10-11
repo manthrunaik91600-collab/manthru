@@ -192,6 +192,58 @@ function pickPublicMobile(text = "") {
   }
   return "";
 }
+function extractSearchResultBlocks(html, provider) {
+  const blocks = [];
+  const add = (href, titleHtml, snippetHtml, rawBlock = "") => {
+    const sourceUrl = unescapeSearchUrl(href || "");
+    if (!sourceUrl || !/^https?:\/\//i.test(sourceUrl)) return;
+    let host = "";
+    try { host = new URL(sourceUrl).hostname.toLowerCase(); } catch { return; }
+    if (/^(?:www\.)?(?:duckduckgo\.com|bing\.com|search\.yahoo\.com|google\.com|yandex\.com|mojeek\.com)$/i.test(host)) return;
+    if (/facebook\.com|instagram\.com|youtube\.com|linkedin\.com|pinterest\.com|tiktok\.com/i.test(host)) return;
+    const title = stripHtml(titleHtml || "").replace(/\s+[|–-]\s+[^|–-]{2,70}$/, "").trim();
+    const snippet = stripHtml(snippetHtml || rawBlock || "").trim();
+    if (title && title.length > 2 && !/^\s*(images|videos|news|maps|more results|feedback)\s*$/i.test(title)) {
+      blocks.push({ sourceUrl, title, snippet, provider });
+    }
+  };
+  if (provider === "bing") {
+    for (const m of html.matchAll(/<li\b[^>]*class=["'][^"']*b_algo[^"']*["'][^>]*>([\s\S]*?)<\/li>/gi)) {
+      const block = m[1];
+      const a = block.match(/<h2[^>]*>\s*<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
+      if (!a) continue;
+      const sm = block.match(/<(?:p|div)[^>]*class=["'][^"']*(?:b_caption|b_snippet)[^"']*["'][^>]*>([\s\S]*?)<\/(?:p|div)>/i);
+      add(a[1], a[2], sm ? sm[1] : block, block);
+    }
+  }
+  if (provider === "ddg") {
+    for (const m of html.matchAll(/<a\b([^>]*class=["'][^"']*(?:result__a|result-link)[^"']*["'][^>]*)>([\s\S]*?)<\/a>/gi)) {
+      const href = (m[1].match(/href=["']([^"']+)["']/i) || [])[1];
+      if (!href) continue;
+      const start = Math.max(0, html.lastIndexOf('<div class="result', m.index), html.lastIndexOf('<tr', m.index), m.index - 450);
+      const after = m.index + m[0].length;
+      const ends = [html.indexOf('<div class="result', after), html.indexOf('<tr', after)].filter(x => x >= 0);
+      const end = ends.length ? Math.min(...ends) : Math.min(html.length, after + 1800);
+      const block = html.slice(start, Math.max(after, end));
+      const sm = block.match(/<(?:a|div|td)[^>]*class=["'][^"']*result__snippet[^"']*["'][^>]*>([\s\S]*?)<\/(?:a|div|td)>/i);
+      add(href, m[2], sm ? sm[1] : block, block);
+    }
+  }
+  // Yahoo and other engines sometimes change wrapper classes; use outbound result links as a last parser fallback.
+  if (!blocks.length) {
+    for (const m of html.matchAll(/<a\b([^>]*href=["']([^"']+)["'][^>]*)>([\s\S]*?)<\/a>/gi)) {
+      const attrs = m[1] || "";
+      if (/class=["'][^"']*(?:ac-algo|algo|result|web-result)[^"']*["']/i.test(attrs) || provider === "yahoo") {
+        const after = m.index + m[0].length;
+        const block = html.slice(Math.max(0, m.index - 350), Math.min(html.length, after + 900));
+        add(m[2], m[3], block, block);
+      }
+    }
+  }
+  const seen = new Set();
+  return blocks.filter(x => { if (seen.has(x.sourceUrl)) return false; seen.add(x.sourceUrl); return true; });
+}
+
 async function searchFreeWebBusinesses(query, pageSize = 20, options = {}) {
   const targetArea = String(options.targetArea || extractAreaFromQuery(query) || "").trim();
   const targetCategory = String(options.targetCategory || query).trim();
@@ -202,91 +254,95 @@ async function searchFreeWebBusinesses(query, pageSize = 20, options = {}) {
     `"${targetArea}" "${targetCategory}" phone`,
     `${targetCategory} in ${targetArea} contact number`,
     `site:justdial.com ${targetArea} ${targetCategory}`,
-    `site:indiamart.com ${targetArea} ${targetCategory}`
+    `site:indiamart.com ${targetArea} ${targetCategory}`,
+    `"${targetArea}" "${targetCategory}" mobile number address`
   ].filter(Boolean);
+  const providers = [
+    { name: "ddg", url: q => `https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`, headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36", "Accept-Language": "en-IN,en;q=0.9", "Accept": "text/html,application/xhtml+xml" } },
+    { name: "bing", url: q => `https://www.bing.com/search?q=${encodeURIComponent(q)}&setlang=en-IN`, headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36", "Accept-Language": "en-IN,en;q=0.9", "Accept": "text/html,application/xhtml+xml" } },
+    { name: "yahoo", url: q => `https://search.yahoo.com/search?p=${encodeURIComponent(q)}`, headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36", "Accept-Language": "en-IN,en;q=0.9", "Accept": "text/html,application/xhtml+xml" } }
+  ];
   const found = [];
   const seenUrls = new Set();
+  const checkedProviders = new Set();
   for (const q of queries) {
     if (found.length >= pageSize) break;
-    const searchUrls = [
-      `https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`,
-      `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(q)}`
-    ];
-    let html = "";
-    for (const searchUrl of searchUrls) {
+    let queryHadResults = false;
+    for (const provider of providers) {
+      if (found.length >= pageSize) break;
+      let html = "";
       try {
-        const response = await fetch(searchUrl, { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36", "Accept-Language": "en-IN,en;q=0.9", "Accept": "text/html,application/xhtml+xml" }, signal: AbortSignal.timeout(12000), redirect: "follow" });
+        const response = await fetch(provider.url(q), { headers: provider.headers, signal: AbortSignal.timeout(10000), redirect: "follow" });
         if (response.ok) {
           const candidate = await response.text();
-          if (/result__a|result-link|result-link/.test(candidate)) { html = candidate; break; }
+          if (candidate.length > 1000) html = candidate;
+          checkedProviders.add(provider.name);
+        } else {
+          console.warn(`Free ${provider.name} search returned HTTP ${response.status}`);
         }
-      } catch (e) { console.warn("Free web search endpoint failed:", e.message); }
-    }
-    if (!html) continue;
-    // Parse result anchors independently of DuckDuckGo's changing wrapper classes.
-    const anchors = [...html.matchAll(/<a\b([^>]*class=["'][^"']*(?:result__a|result-link)[^"']*["'][^>]*)>([\s\S]*?)<\/a>/gi)];
-    for (const match of anchors) {
-      if (found.length >= pageSize) break;
-      const attrs = match[1] || "";
-      const hrefMatch = attrs.match(/href=["']([^"']+)["']/i);
-      if (!hrefMatch) continue;
-      const sourceUrl = unescapeSearchUrl(hrefMatch[1]);
-      if (!sourceUrl || !/^https?:\/\//i.test(sourceUrl) || /duckduckgo\.com\/(?:y\.js|html|lite|l\/)/i.test(sourceUrl) || seenUrls.has(sourceUrl)) continue;
-      seenUrls.add(sourceUrl);
-      const name = stripHtml(match[2]).replace(/\s+[|–-]\s+[^|–-]{2,70}$/, "").trim();
-      const start = Math.max(html.lastIndexOf('<div class="result', match.index), html.lastIndexOf('<tr', match.index), match.index - 300);
-      const nextA = html.indexOf(match[0], match.index) + match[0].length;
-      const endCandidates = [html.indexOf('<div class="result', nextA), html.indexOf('<tr', nextA) ].filter(x => x >= 0);
-      const end = endCandidates.length ? Math.min(...endCandidates) : Math.min(html.length, nextA + 1800);
-      const block = html.slice(Math.max(0, start), Math.max(nextA, end));
-      const snippetMatch = block.match(/<(?:a|div|td)[^>]*class=["'][^"']*result__snippet[^"']*["'][^>]*>([\s\S]*?)<\/(?:a|div|td)>/i);
-      const snippet = stripHtml(snippetMatch ? snippetMatch[1] : block);
-      if (!name || !snippet) continue;
-      let pageText = `${name} ${snippet}`;
-      let pageHtml = "";
-      try {
-        const pageRes = await fetch(sourceUrl, { headers: { "User-Agent": "Mozilla/5.0 (compatible; ManThruPublicListingSearch/1.0)", "Accept-Language": "en-IN,en;q=0.9" }, signal: AbortSignal.timeout(7000), redirect: "follow" });
-        if (pageRes.ok && /text\/html/i.test(pageRes.headers.get("content-type") || "text/html")) {
-          pageHtml = (await pageRes.text()).slice(0, 1200000);
-          pageText += " " + stripHtml(pageHtml).slice(0, 45000);
-        }
-      } catch { /* A search snippet can still be evaluated, but never invent missing fields. */ }
-      const areaMentioned = targetArea && clean(pageText).includes(clean(targetArea));
-      if (strictArea && !areaMentioned) continue;
-      if (!matchesRequestedCategory(name, targetCategory, [snippet, pageText.slice(0, 1200)])) continue;
-      const mobile = pickPublicMobile(pageText);
-      if (onlyWithMobile && !mobile) continue;
-      let address = "";
-      const jsonLd = [...pageHtml.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)].map(m => m[1]);
-      for (const raw of jsonLd) {
+      } catch (e) { console.warn(`Free ${provider.name} search endpoint failed:`, e.message); }
+      if (!html) continue;
+      const results = extractSearchResultBlocks(html, provider.name);
+      if (results.length) queryHadResults = true;
+      for (const result of results) {
+        if (found.length >= pageSize) break;
+        const sourceUrl = result.sourceUrl;
+        if (seenUrls.has(sourceUrl)) continue;
+        seenUrls.add(sourceUrl);
+        const name = result.title;
+        const snippet = result.snippet;
+        if (!name || name.length < 3) continue;
+        let pageText = `${name} ${snippet}`;
+        let pageHtml = "";
         try {
-          const data = JSON.parse(raw);
-          const nodes = Array.isArray(data) ? data : [data, ...(Array.isArray(data["@graph"]) ? data["@graph"] : [])];
-          for (const node of nodes) {
-            const addr = node.address;
-            if (typeof addr === "string") address = addr;
-            else if (addr && typeof addr === "object") address = [addr.streetAddress, addr.addressLocality, addr.addressRegion, addr.postalCode].filter(Boolean).join(", ");
-            if (address) break;
+          const pageRes = await fetch(sourceUrl, { headers: { "User-Agent": "Mozilla/5.0 (compatible; ManThruPublicListingSearch/1.1)", "Accept-Language": "en-IN,en;q=0.9" }, signal: AbortSignal.timeout(6500), redirect: "follow" });
+          if (pageRes.ok && /text\/html/i.test(pageRes.headers.get("content-type") || "text/html")) {
+            pageHtml = (await pageRes.text()).slice(0, 900000);
+            pageText += " " + stripHtml(pageHtml).slice(0, 35000);
           }
-        } catch { /* malformed or unrelated JSON-LD */ }
-        if (address) break;
+        } catch { /* Keep only details grounded in the public result snippet if the page blocks automated access. */ }
+        const normalizedArea = clean(targetArea);
+        const normalizedText = clean(pageText);
+        const areaMentioned = !!normalizedArea && (` ${normalizedText} `).includes(` ${normalizedArea} `);
+        if (strictArea && !areaMentioned) continue;
+        if (!matchesRequestedCategory(name, targetCategory, [snippet, pageText.slice(0, 1800)])) continue;
+        const mobile = pickPublicMobile(pageText);
+        if (onlyWithMobile && !mobile) continue;
+        let address = "";
+        const jsonLd = [...pageHtml.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)].map(m => m[1]);
+        for (const raw of jsonLd) {
+          try {
+            const data = JSON.parse(raw);
+            const nodes = Array.isArray(data) ? data : [data, ...(Array.isArray(data["@graph"]) ? data["@graph"] : [])];
+            for (const node of nodes) {
+              const addr = node.address;
+              if (typeof addr === "string") address = addr;
+              else if (addr && typeof addr === "object") address = [addr.streetAddress, addr.addressLocality, addr.addressRegion, addr.postalCode].filter(Boolean).join(", ");
+              if (address) break;
+            }
+          } catch { /* Ignore malformed JSON-LD. */ }
+          if (address) break;
+        }
+        if (!address) {
+          const meta = pageHtml.match(/<meta[^>]*(?:property|name)=["'](?:og:description|description)["'][^>]*content=["']([^"']+)["']/i);
+          const desc = meta ? decodeHtmlEntities(meta[1]) : snippet;
+          if (targetArea && clean(desc).includes(normalizedArea) && /\b(address|located|road|street|nagar|colony|market|main road|near|locality|\d{6})\b/i.test(desc)) address = desc.slice(0, 240);
+        }
+        // Keep the strict locality requirement; when the listing explicitly names the target area but omits a street address,
+        // record the locality rather than inventing a street address.
+        if (!address && areaMentioned) address = targetArea;
+        if (!address || !sourceUrl || !/^https?:\/\//i.test(sourceUrl)) continue;
+        found.push({
+          id: `freeweb_${Date.now()}_${found.length}`, placeId: "", name,
+          phone: mobile || "", category: targetCategory, area: targetArea,
+          address, website: sourceUrl, rating: null, reviewCount: null,
+          operationalStatus: "Public web listing found", googleMapsUri: "", sourceUrl,
+          whatsappLink: mobile ? `https://wa.me/91${mobile}` : "", source: `Free ${provider.name.toUpperCase()} public web search`,
+          status: "New", notes: "Public listing source attached; verify details before outreach.", createdAt: new Date().toISOString(), searchQuery: query
+        });
       }
-      if (!address) {
-        const meta = pageHtml.match(/<meta[^>]*(?:property|name)=["'](?:og:description|description)["'][^>]*content=["']([^"']+)["']/i);
-        const desc = meta ? decodeHtmlEntities(meta[1]) : snippet;
-        if (targetArea && clean(desc).includes(clean(targetArea)) && /\b(address|located|road|street|nagar|colony|market|main road|near|medchal|locality)\b/i.test(desc)) address = desc.slice(0, 240);
-      }
-      if (!address || !sourceUrl || !/^https?:\/\//i.test(sourceUrl)) continue;
-      if (!name || !targetArea || !targetCategory) continue;
-      const website = /^https?:\/\//i.test(sourceUrl) ? new URL(sourceUrl).origin : "";
-      found.push({
-        id: `freeweb_${Date.now()}_${found.length}`, placeId: "", name,
-        phone: mobile || "", category: targetCategory, area: targetArea,
-        address, website, rating: null, reviewCount: null,
-        operationalStatus: "Public web listing found", googleMapsUri: "", sourceUrl,
-        whatsappLink: mobile ? `https://wa.me/91${mobile}` : "", source: "Free DuckDuckGo public web search",
-        status: "New", notes: "Free public-web result; verify details before outreach.", createdAt: new Date().toISOString(), searchQuery: query
-      });
+      // Once an engine has provided usable results for a query, do not hammer it or other engines unnecessarily.
+      if (queryHadResults && found.length >= pageSize) break;
     }
   }
   const unique = [];
@@ -296,12 +352,14 @@ async function searchFreeWebBusinesses(query, pageSize = 20, options = {}) {
     if (keys.has(key)) continue;
     keys.add(key); unique.push(lead);
   }
+  const count = Math.min(unique.length, pageSize);
   return {
     leads: unique.slice(0, pageSize), searchQuery: query, targetArea, targetCategory,
-    source: "Free DuckDuckGo public web search", attribution: "Public web source URL included per result",
-    totalFound: Math.min(unique.length, pageSize),
-    message: unique.length ? `Found ${Math.min(unique.length, pageSize)} public web listings with source links using a free search provider. Phone numbers are included only when found in fetched public text; verify before outreach.` : "The free search provider returned no listings that met the strict area/category and source checks. This can happen when the provider blocks automated requests or public pages omit contact details; no sample or invented leads were added.",
-    sourcesChecked: queries
+    source: "Free public-web search (DuckDuckGo, Bing, Yahoo)", attribution: "Public web source URL included per result",
+    totalFound: count,
+    message: count ? `Found ${count} public web listings. Phone numbers are included only when present in public result text or the linked page; verify before outreach.` : `No listings passed the public-source, category, and ${strictArea ? "strict area" : "area"} checks. Free search providers may block automated requests or return incomplete snippets. No sample or invented leads were added. Providers checked: ${[...checkedProviders].join(", ") || "none returned readable results"}.`,
+    sourcesChecked: queries,
+    providersChecked: [...checkedProviders]
   };
 }
 

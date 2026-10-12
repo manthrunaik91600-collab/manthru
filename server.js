@@ -111,6 +111,7 @@ function formatCategory(primaryTypeDisplay, primaryType, types) {
 function categoryMatchGroup(categoryText) {
   const c = String(categoryText || "").toLowerCase().replace(/[_-]+/g, " ").trim();
   if (/\b(bank|banks|bank branch|bank branches|atm)\b/.test(c)) return "bank";
+  if (/\b(car wash|carwash|auto wash|vehicle wash|car cleaning)\b/.test(c)) return "carwash";
   if (/\b(kirana|grocery|groceries|provision|general store|general stores|supermarket|convenience store|convenience|food store|minimarket)\b/.test(c)) return "grocery";
   if (/\b(gold|jewel|jewellery|jewelry|jeweler|jeweller|ornament)\b/.test(c)) return "jewellery";
   if (/\b(mobile|cell phone|smartphone|phone shop|mobile phone)\b/.test(c)) return "mobile";
@@ -132,6 +133,7 @@ function matchesRequestedCategory(name, categoryText, typeValues = []) {
     .filter(Boolean).join(" ").toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
   const patterns = {
     bank: /\b(bank|bank branch|atm)\b/,
+    carwash: /\b(car wash|carwash|auto wash|vehicle wash|car cleaning|car washer)\b/,
     grocery: /\b(kirana|grocery|groceries|supermarket|convenience store|convenience|general store|general|provision store|provision shop|food store|grocery store|minimarket|mini market|greengrocer|wholesale)\b/,
     jewellery: /\b(gold|jewel|jewellery|jewelry|jeweller|jeweler|ornament)\b/,
     mobile: /\b(mobile phone|mobile|cell phone|smartphone|telecom shop|mobile phone store)\b/,
@@ -147,6 +149,7 @@ function matchesRequestedCategory(name, categoryText, typeValues = []) {
     .join(" ").toLowerCase().replace(/[_-]+/g, " ");
   const typePatterns = {
     bank: /\b(bank|atm)\b/,
+    carwash: /\b(car wash|carwash|auto wash|vehicle wash)\b/,
     grocery: /\b(grocery store|food store|supermarket|convenience store|general store|provision store)\b/,
     jewellery: /\b(jewelry store|jewellery store)\b/,
     mobile: /\b(cell phone store|mobile phone store)\b/,
@@ -381,7 +384,11 @@ async function searchGooglePlacesBusinesses(query, pageSize = 20, options = {}) 
   const strictArea = options.strictAreaFilter !== false;
   const onlyWithMobile = options.onlyWithMobile === true;
   const clean = (v) => String(v || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-  const textQuery = `${targetCategory} in ${targetArea}`.trim();
+  // Preserve the full search phrase (including brand names such as SBI) and anchor
+  // it to the chosen area when the area is not already present in the query.
+  const rawQuery = String(query || "").trim();
+  const queryAlreadyHasArea = clean(rawQuery).includes(clean(targetArea));
+  const textQuery = queryAlreadyHasArea ? rawQuery : `${rawQuery} in ${targetArea}`;
   const headers = {
     "Content-Type": "application/json",
     "X-Goog-Api-Key": apiKey,
@@ -451,44 +458,21 @@ async function searchGooglePlacesBusinesses(query, pageSize = 20, options = {}) 
 }
 
 async function searchRealBusinesses(query, pageSize = 20, options = {}) {
-  if (!query || typeof query !== "string" || !query.trim()) {
-    throw new Error("Search query is required.");
-  }
-
+  if (!query || typeof query !== "string" || !query.trim()) throw new Error("Search query is required.");
   const cleanQuery = query.trim();
   pageSize = [20, 50, 100].includes(Number(pageSize)) ? Number(pageSize) : 20;
   const targetArea = String(options.targetArea || extractAreaFromQuery(cleanQuery) || "").trim();
   const targetCategory = String(options.targetCategory || cleanQuery).trim();
-  if (!targetArea || !targetCategory) {
-    throw new Error("Target area and business category are both required.");
+  if (!targetArea || !targetCategory) throw new Error("Target area and business category are both required.");
+  // Google Places is primary whenever a key is configured. Do not silently switch to
+  // potentially unrelated web-search results when Google returns an API error.
+  const hasGoogleKey = Boolean(String(process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_PLACES_API_KEY || "").trim());
+  const normalizedOptions = { ...options, targetArea, targetCategory, strictAreaFilter: options.strictAreaFilter !== false };
+  if (hasGoogleKey) {
+    return await searchGooglePlacesBusinesses(cleanQuery, pageSize, normalizedOptions);
   }
-
-  const searchOptions = {
-    ...options,
-    targetArea,
-    targetCategory,
-    strictAreaFilter: options.strictAreaFilter !== false
-  };
-
-  // Google Places is the primary provider. Do not silently route a configured
-  // Google Places search to DuckDuckGo/Bing/Yahoo: that made the UI report free
-  // search providers even when the Google Places function existed in this file.
-  const googleApiKey = String(
-    process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_PLACES_API_KEY || ""
-  ).trim();
-
-  if (!googleApiKey) {
-    const error = new Error(
-      "Google Places API key is missing. Add GOOGLE_MAPS_API_KEY (or GOOGLE_PLACES_API_KEY) to the Render service environment, then redeploy."
-    );
-    error.status = 503;
-    error.code = "GOOGLE_PLACES_KEY_MISSING";
-    throw error;
-  }
-
-  // If Google responds with a quota, permissions, billing, or API error, return
-  // that real error to the client instead of silently switching search providers.
-  return await searchGooglePlacesBusinesses(cleanQuery, pageSize, searchOptions);
+  // Public-web fallback is used only when no Google key is configured.
+  return await searchFreeWebBusinesses(cleanQuery, pageSize, normalizedOptions);
 }
 
 async function generateSpecialDayMarketing(params) {
@@ -1084,7 +1068,7 @@ app.get("/api/health", (req, res) => {
     service: "Man Thru Universal Business Lead Tool",
     hasOpenAIKey: false,
     hasGooglePlacesKey: Boolean(process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_PLACES_API_KEY),
-    searchProvider: (process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_PLACES_API_KEY) ? "Google Places API" : "Google Places API (key missing)",
+    searchProvider: (process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_PLACES_API_KEY) ? "Google Places API" : "Free public-web search fallback",
     timestamp: (/* @__PURE__ */ new Date()).toISOString()
   });
 });

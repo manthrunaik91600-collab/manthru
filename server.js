@@ -451,15 +451,44 @@ async function searchGooglePlacesBusinesses(query, pageSize = 20, options = {}) 
 }
 
 async function searchRealBusinesses(query, pageSize = 20, options = {}) {
-  if (!query || typeof query !== "string" || !query.trim()) throw new Error("Search query is required.");
+  if (!query || typeof query !== "string" || !query.trim()) {
+    throw new Error("Search query is required.");
+  }
+
   const cleanQuery = query.trim();
   pageSize = [20, 50, 100].includes(Number(pageSize)) ? Number(pageSize) : 20;
   const targetArea = String(options.targetArea || extractAreaFromQuery(cleanQuery) || "").trim();
   const targetCategory = String(options.targetCategory || cleanQuery).trim();
-  if (!targetArea || !targetCategory) throw new Error("Target area and business category are both required.");
-  // Quota-independent lead search: do not call Google Places, which can fail with HTTP 429.
-  // Search public web listings using DuckDuckGo, Bing, and Yahoo; retain strict area/mobile filters.
-  return await searchFreeWebBusinesses(cleanQuery, pageSize, { ...options, targetArea, targetCategory, strictAreaFilter: options.strictAreaFilter !== false });
+  if (!targetArea || !targetCategory) {
+    throw new Error("Target area and business category are both required.");
+  }
+
+  const searchOptions = {
+    ...options,
+    targetArea,
+    targetCategory,
+    strictAreaFilter: options.strictAreaFilter !== false
+  };
+
+  // Google Places is the primary provider. Do not silently route a configured
+  // Google Places search to DuckDuckGo/Bing/Yahoo: that made the UI report free
+  // search providers even when the Google Places function existed in this file.
+  const googleApiKey = String(
+    process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_PLACES_API_KEY || ""
+  ).trim();
+
+  if (!googleApiKey) {
+    const error = new Error(
+      "Google Places API key is missing. Add GOOGLE_MAPS_API_KEY (or GOOGLE_PLACES_API_KEY) to the Render service environment, then redeploy."
+    );
+    error.status = 503;
+    error.code = "GOOGLE_PLACES_KEY_MISSING";
+    throw error;
+  }
+
+  // If Google responds with a quota, permissions, billing, or API error, return
+  // that real error to the client instead of silently switching search providers.
+  return await searchGooglePlacesBusinesses(cleanQuery, pageSize, searchOptions);
 }
 
 async function generateSpecialDayMarketing(params) {
@@ -1055,7 +1084,7 @@ app.get("/api/health", (req, res) => {
     service: "Man Thru Universal Business Lead Tool",
     hasOpenAIKey: false,
     hasGooglePlacesKey: Boolean(process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_PLACES_API_KEY),
-    searchProvider: (process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_PLACES_API_KEY) ? "Google Places API" : "Free public-web search fallback",
+    searchProvider: (process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_PLACES_API_KEY) ? "Google Places API" : "Google Places API (key missing)",
     timestamp: (/* @__PURE__ */ new Date()).toISOString()
   });
 });

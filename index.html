@@ -262,14 +262,14 @@
             </span>
             <span id="bannerPacingDelayText" class="text-xs text-slate-400 font-medium">Human Pacing Delay (25s–45s) • S.No Serial Enabled</span>
           </div>
-          <h2 id="bannerHeadingText" class="text-base sm:text-lg font-black tracking-tight text-white">Paced B2B Outreach: 15-Message Compliance Break System</h2>
+          <h2 id="bannerHeadingText" class="text-base sm:text-lg font-black tracking-tight text-white">Paced B2B Outreach: 20-Message Compliance Break System</h2>
           <p id="lblOutreachModeDesc" class="text-xs text-emerald-300 leading-relaxed font-semibold">⚡ 1-Line Intro Mode Active: Sends 1 friendly opening inquiry with polite opt-out notice.</p>
         </div>
 
         <div class="flex flex-wrap items-center gap-3">
           <div class="bg-slate-950/90 border border-slate-800 px-4 py-2.5 rounded-xl text-center">
             <div id="lblSentTodayText" class="text-[10px] uppercase tracking-wider text-slate-400 font-bold">BATCH PROGRESS</div>
-            <div class="text-base font-black text-white"><span id="lblBatchProgressBanner" class="text-emerald-400">0</span> <span class="text-slate-400 text-xs">/ 15</span></div>
+            <div class="text-base font-black text-white"><span id="lblBatchProgressBanner" class="text-emerald-400">0</span> <span class="text-slate-400 text-xs">/ 20</span></div>
             <div class="text-[10px] text-slate-400"><span id="lblSentTodaySub">Total Sent Today:</span> <span id="lblSentToday" class="text-white font-bold">0</span></div>
           </div>
           <button id="btnStartStepper" onclick="startStepper()" class="px-4 py-2.5 bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-black text-xs rounded-xl shadow-md transition cursor-pointer">Start Paced Stepper</button>
@@ -1578,7 +1578,7 @@ Business: Man Thru B2B Network</textarea>
             </div>
 
             <div class="p-3 bg-slate-800/80 rounded-xl border border-slate-700 space-y-1">
-              <span class="font-bold text-emerald-300">2. 15-Message Batch Cycles &amp; 15-Minute Mandatory Cooldown</span><br>
+              <span class="font-bold text-emerald-300">2. 20-Message Batch Cycles &amp; 15-Minute Mandatory Cooldown</span><br>
               After every 15 dispatched messages, the system automatically triggers a 15-minute batch cooldown timer to let your connection settle, keeping your WhatsApp account health completely off security radars.
             </div>
 
@@ -1728,7 +1728,7 @@ Business: Man Thru B2B Network</textarea>
           <span id="lblCooldownCycleTag">15-MINUTE REST CYCLE ACTIVE</span>
         </div>
         <h3 id="cooldownModalTitle" class="text-xl font-black text-white tracking-tight">
-          15-Message Batch Completed! (Rest Period)
+          20-Message Batch Completed! (Rest Period)
         </h3>
         <p id="cooldownModalSub" class="text-xs text-slate-300 max-w-md mx-auto leading-relaxed">
           In accordance with safe B2B outreach compliance, a 15-minute rest period is active between messaging cycles.
@@ -1749,12 +1749,7 @@ Business: Man Thru B2B Network</textarea>
         </button>
       </div>
 
-      <div class="pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
-        <span id="lblCooldownOverride">Manual Rest Override:</span>
-        <button id="btnCooldownOverride" onclick="ownerBypassCooldown()" class="text-amber-400 hover:text-amber-300 font-bold underline cursor-pointer">
-          ⚡ Skip Rest Period (Passcode: 8899)
-        </button>
-      </div>
+
     </div>
   </div>
 
@@ -1853,8 +1848,8 @@ Business: Man Thru B2B Network</textarea>
   <script>
     const FRESH_DB_KEY = 'man_thru_pure_empty_v6_fresh';
     let dashboardLeads = [];
-    let senderBusiness = 'Man Thru';
-    let senderPhone = '+91 91600 86793';
+    let senderBusiness = localStorage.getItem('man_thru_sender_business') || 'Man Thru';
+    let senderPhone = localStorage.getItem('man_thru_sender_phone') || '+91 91600 86793';
     let activeAccountData = null;
 
     try {
@@ -1882,18 +1877,18 @@ Business: Man Thru B2B Network</textarea>
     let currentView = 'dashboard';
     let currentDashTab = 'all';
     let currentLanguage = 'en';
-    let sentTodayCount = 0;
-    let batchCounter = 0;
-    let cooldownEndTime = 0;
+    let sentTodayCount = Number(localStorage.getItem('man_thru_sent_today') || '0') || 0;
+    let batchCounter = Number(localStorage.getItem('man_thru_batch_count') || '0') || 0;
+    let cooldownEndTime = Number(localStorage.getItem('man_thru_cooldown_end') || '0') || 0;
 
     if (cooldownEndTime && Date.now() >= cooldownEndTime) {
       cooldownEndTime = 0;
       batchCounter = 0;
       localStorage.removeItem('man_thru_cooldown_end');
       localStorage.setItem('man_thru_batch_count', '0');
-    } else if (!cooldownEndTime && batchCounter >= 15) {
-      batchCounter = 0;
-      localStorage.setItem('man_thru_batch_count', '0');
+    } else if (!cooldownEndTime && batchCounter >= 20) {
+      cooldownEndTime = Date.now() + (15 * 60 * 1000);
+      localStorage.setItem('man_thru_cooldown_end', cooldownEndTime.toString());
     }
 
     let outreachMode = localStorage.getItem('man_thru_outreach_mode') || 'hook';
@@ -1932,6 +1927,38 @@ Business: Man Thru B2B Network</textarea>
     ];
 
     let activePitchTemplate = PITCH_TEMPLATES[0];
+    let selectedPitchVariantIndex = 0;
+
+    function getPitchTemplatePool(isTe = currentLanguage === 'te') {
+      const defaults = isTe ? TELUGU_PITCH_TEMPLATES : PITCH_TEMPLATES;
+      try {
+        const saved = JSON.parse(localStorage.getItem(isTe ? 'man_thru_pitch_variants_te' : 'man_thru_pitch_variants_en') || 'null');
+        if (Array.isArray(saved) && saved.length === 5 && saved.every(v => typeof v === 'string')) return saved;
+      } catch (e) {}
+      return defaults;
+    }
+
+    function savePitchTemplatePool(pool, isTe = currentLanguage === 'te') {
+      localStorage.setItem(isTe ? 'man_thru_pitch_variants_te' : 'man_thru_pitch_variants_en', JSON.stringify(pool));
+    }
+
+    function renderLeadPitch(template, lead) {
+      let message = String(template || '');
+      message = message
+        .replace(/{Business Name}/g, lead.name || 'your business')
+        .replace(/{Sender Business}/g, senderBusiness)
+        .replace(/{Area}/g, lead.area || 'Local')
+        .replace(/{Sender Phone}/g, senderPhone);
+      message = message.replace(/\{([^{}]+)\}/g, (_, choices) => {
+        const options = choices.split('|').map(v => v.trim()).filter(Boolean);
+        return options.length ? options[Math.floor(Math.random() * options.length)] : '';
+      });
+      const ref = '(Ref: #' + (1000 + Math.floor(Math.random() * 9000)) + ')';
+      const optOut = currentLanguage === 'te'
+        ? "\n\n[గమనిక: ఆసక్తి లేకపోతే STOP అని రిప్లై చేయండి; మళ్లీ మెసేజ్ చేయము.]"
+        : "\n\n[If you do not want further messages, reply STOP and we will not message again.]";
+      return message + '\n\n' + ref + optOut;
+    }
 
     function isCooldownActive() {
       if (cooldownEndTime && Date.now() < cooldownEndTime) return true;
@@ -1960,7 +1987,7 @@ Business: Man Thru B2B Network</textarea>
       renderDashboardTable();
       showToast(currentLanguage === 'te' 
         ? '🛡️ 15 మెసేజ్ ల బ్యాచ్ పూర్తయింది! 15 నిమిషాల కూల్-డౌన్ లాక్ ప్రారంభమైంది.' 
-        : '🛡️ 15-message batch complete! 15-minute rest cooldown activated.');
+        : '🛡️ 20-message batch complete! 15-minute rest cooldown activated.');
     }
 
     function completeCooldownUnlock() {
@@ -1973,7 +2000,7 @@ Business: Man Thru B2B Network</textarea>
       updateCooldownUI();
       renderTable();
       renderDashboardTable();
-      showToast('🎉 15-Minute Cool-down Complete! Unblocked for next 15 safe messages.');
+      showToast('🎉 15-Minute Cool-down Complete! Unblocked for next 20 messages.');
     }
 
     function openCooldownModal() {
@@ -1986,6 +2013,24 @@ Business: Man Thru B2B Network</textarea>
       const m = document.getElementById('modalCooldownLock');
       if (m) { m.classList.add('hidden'); m.classList.remove('flex'); }
     }
+
+    // Dashboard can be viewed during the rest, but no other interaction is permitted.
+    function enforceCooldownInteractionLock(event) {
+      if (!isCooldownActive()) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (event.type === 'click' && target && target.closest('#btnCooldownClose')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+      if (event.type === 'click') {
+        const modal = document.getElementById('modalCooldownLock');
+        if (modal && modal.classList.contains('hidden')) openCooldownModal();
+        showToast(currentLanguage === 'te' ? '15 నిమిషాల బ్రేక్ పూర్తయ్యే వరకు అన్ని ఫీచర్లు లాక్‌లో ఉంటాయి.' : 'All features are locked until the 15-minute rest timer ends.');
+      }
+    }
+    ['click', 'submit', 'input', 'change', 'keydown', 'paste', 'drop'].forEach(type => {
+      document.addEventListener(type, enforceCooldownInteractionLock, true);
+    });
 
     function playUnlockChime() {
       try {
@@ -2046,9 +2091,9 @@ Business: Man Thru B2B Network</textarea>
         pBar.style.width = Math.min(100, Math.max(0, (elapsed / totalSec) * 100)) + '%';
       }
       const bannerBatch = document.getElementById('lblBatchProgressBanner');
-      if (bannerBatch) bannerBatch.innerText = (batchCounter % 15 || (active ? 15 : 0));
+      if (bannerBatch) bannerBatch.innerText = (batchCounter % 20 || (active ? 20 : 0));
       const batchProg = document.getElementById('lblBatchProgress');
-      if (batchProg) batchProg.innerText = (batchCounter % 15 || (active ? 15 : 0)) + ' / 15';
+      if (batchProg) batchProg.innerText = (batchCounter % 20 || (active ? 20 : 0)) + ' / 20';
     }
 
     setInterval(() => {
@@ -2134,6 +2179,7 @@ Business: Man Thru B2B Network</textarea>
       const savedLang = localStorage.getItem('man_thru_lang') || 'en';
       applyLanguage(savedLang);
       updateCooldownUI();
+      if (isCooldownActive()) openCooldownModal();
       renderPosterCanvas();
     });
 
@@ -2516,52 +2562,22 @@ Business: Man Thru B2B Network</textarea>
       const cleanPhone = '91' + digits;
 
       const isTe = currentLanguage === 'te';
-      let finalMsg = '';
-
-      if (outreachMode === 'hook') {
-        const pool = isTe ? TELUGU_HOOK_TEMPLATES : HOOK_TEMPLATES;
-        const hookIdx = (sentTodayCount % pool.length);
-        const rawHook = pool[hookIdx]
-          .replace(/{Business Name}/g, lead.name)
-          .replace(/{Sender Business}/g, senderBusiness)
-          .replace(/{Area}/g, lead.area || 'Local')
-          .replace(/{Sender Phone}/g, senderPhone);
-
-        const spintaxHook = rawHook.replace(/\{([^{}]+)\}/g, (_, choices) => {
-          const options = choices.split('|');
-          return options[Math.floor(Math.random() * options.length)];
-        });
-        finalMsg = spintaxHook + '\n\n(Ref: #' + (1000 + Math.floor(Math.random() * 9000)) + ')';
-      } else {
-        const pool = isTe ? TELUGU_PITCH_TEMPLATES : PITCH_TEMPLATES;
-        const activeTemplate = pool[sentTodayCount % pool.length];
-        const rawMsg = activeTemplate
-          .replace(/{Business Name}/g, lead.name)
-          .replace(/{Sender Business}/g, senderBusiness)
-          .replace(/{Area}/g, lead.area || 'Local')
-          .replace(/{Sender Phone}/g, senderPhone);
-
-        const spintaxMsg = rawMsg.replace(/\{([^{}]+)\}/g, (_, choices) => {
-          const options = choices.split('|');
-          return options[Math.floor(Math.random() * options.length)];
-        });
-        const optOut = isTe
-          ? "\n\n[గమనిక: ఈ మెసేజ్ మీ వ్యాపారానికి ఉపయోగపడుతుందని భావించి పంపాము. ఒకవేళ ఆసక్తి లేకపోతే క్షమించండి, దయచేసి 'STOP' అని రిప్లై చేయండి, మేము మరలా మెసేజ్ చేయము. 🙏]"
-          : "\n\n[Note: Sent for B2B commercial enquiry. If not interested, please reply 'STOP' and we will remove your number immediately. 🙏]";
-        finalMsg = spintaxMsg + '\n\n(Ref: #' + (1000 + Math.floor(Math.random() * 9000)) + ')' + optOut;
-      }
-
+      const pool = getPitchTemplatePool(isTe);
+      // Each recipient receives the next saved variant in the 5-template rotation.
+      const variantIndex = ((batchCounter % pool.length) + pool.length) % pool.length;
+      const finalMsg = renderLeadPitch(pool[variantIndex], lead);
       window.open(`https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(finalMsg)}`, '_blank');
       lead.status = 'Contacted';
       lead.lastContactedAt = new Date().toISOString();
       sentTodayCount++;
+      localStorage.setItem('man_thru_sent_today', sentTodayCount.toString());
       batchCounter++;
       localStorage.setItem('man_thru_batch_count', batchCounter.toString());
 
       saveDashboardLeads(); renderDashboard(); renderTable();
-      showToast((outreachMode === 'hook' ? '⚡ 1-Line Hook: ' : '📜 Wholesale Pitch: ') + lead.name);
+      showToast('📋 Message Variant ' + (((batchCounter - 1) % 5) + 1) + '/5 sent to ' + lead.name);
 
-      if (batchCounter >= 15) {
+      if (batchCounter >= 20) {
         trigger15MessageCooldown();
       } else {
         updateCooldownUI();
@@ -2643,9 +2659,8 @@ Business: Man Thru B2B Network</textarea>
         if (badge) badge.innerText = `Lead ${currentStepperIndex + 1} of ${stepperLeadsQueue.length}`;
         const msgPrev = document.getElementById('stepperMsgPreview');
         if (msgPrev) {
-          const isTe = currentLanguage === 'te';
-          const pool = outreachMode === 'hook' ? (isTe ? TELUGU_HOOK_TEMPLATES : HOOK_TEMPLATES) : (isTe ? TELUGU_PITCH_TEMPLATES : PITCH_TEMPLATES);
-          msgPrev.innerText = pool[sentTodayCount % pool.length].replace(/{Business Name}/g, lead.name).replace(/{Area}/g, lead.area || 'Local').replace(/{[^{}]+}/g, 'Namaste');
+          const pool = getPitchTemplatePool(currentLanguage === 'te');
+          msgPrev.innerText = renderLeadPitch(pool[batchCounter % pool.length], lead);
         }
       }
     }
@@ -2669,7 +2684,7 @@ Business: Man Thru B2B Network</textarea>
         sendWhatsAppStandalone(currentLead.id);
         currentStepperIndex++;
       }
-      if (batchCounter >= 15) {
+      if (batchCounter >= 20) {
         stopAutopilot(); trigger15MessageCooldown(); return;
       }
       if (currentStepperIndex < stepperLeadsQueue.length) {
@@ -2706,7 +2721,7 @@ Business: Man Thru B2B Network</textarea>
         sendWhatsAppStandalone(lead.id);
         currentStepperIndex++;
       }
-      if (batchCounter >= 15) {
+      if (batchCounter >= 20) {
         stopAutopilot(); trigger15MessageCooldown(); return;
       }
       if (currentStepperIndex < stepperLeadsQueue.length) {
@@ -2719,7 +2734,7 @@ Business: Man Thru B2B Network</textarea>
     }
 
     function startDelayCountdownForNextLead() {
-      if (isCooldownActive() || batchCounter >= 15) {
+      if (isCooldownActive() || batchCounter >= 20) {
         stopAutopilot(); trigger15MessageCooldown(); return;
       }
       if (currentStepperIndex >= stepperLeadsQueue.length) {
@@ -2756,7 +2771,7 @@ Business: Man Thru B2B Network</textarea>
           if (nextLead) {
             sendWhatsAppStandalone(nextLead.id);
             currentStepperIndex++;
-            if (batchCounter >= 15) { stopAutopilot(); trigger15MessageCooldown(); return; }
+            if (batchCounter >= 20) { stopAutopilot(); trigger15MessageCooldown(); return; }
             if (currentStepperIndex < stepperLeadsQueue.length && isAutopilotRunning) {
               updateStepperModal();
               startDelayCountdownForNextLead();
@@ -2773,7 +2788,7 @@ Business: Man Thru B2B Network</textarea>
       if (currentStepperIndex < stepperLeadsQueue.length) {
         const lead = stepperLeadsQueue[currentStepperIndex];
         if (lead) { sendWhatsAppStandalone(lead.id); currentStepperIndex++; }
-        if (batchCounter >= 15) { stopAutopilot(); trigger15MessageCooldown(); return; }
+        if (batchCounter >= 20) { stopAutopilot(); trigger15MessageCooldown(); return; }
         if (currentStepperIndex < stepperLeadsQueue.length) {
           updateStepperModal();
           if (isAutopilotRunning) startDelayCountdownForNextLead();
@@ -2944,15 +2959,7 @@ Business: Man Thru B2B Network</textarea>
       a.click();
     }
 
-    function ownerBypassCooldown() {
-      const pin = prompt('Enter Owner Master Passcode to unlock rest period (Default: 8899):');
-      if (pin === '8899' || pin === 'ADMIN999' || pin === '8888') {
-        completeCooldownUnlock();
-        showToast('⚡ Rest period skipped via manual override.');
-      } else if (pin !== null) {
-        showToast('❌ Invalid Passcode.');
-      }
-    }
+
 
     const USERS_DB_KEY = 'man_thru_users_directory_v2';
     const OWNER_MOBILE = '9160086793';
@@ -4129,8 +4136,12 @@ Business: Man Thru B2B Network</textarea>
     function openPitchModal() {
       document.getElementById('inputSenderName').value = senderBusiness;
       document.getElementById('inputSenderPhone').value = senderPhone;
+      selectedPitchVariantIndex = 0;
+      const pool = getPitchTemplatePool(currentLanguage === 'te');
+      const txt = document.getElementById('txtPitchBody'); if (txt) txt.value = pool[0];
       document.getElementById('modalPitch').classList.remove('hidden');
       document.getElementById('modalPitch').classList.add('flex');
+      updatePitchPreview();
     }
 
     function closePitchModal() {
@@ -4139,24 +4150,48 @@ Business: Man Thru B2B Network</textarea>
     }
 
     function selectPitchVariantTab(idx) {
-      const pool = currentLanguage === 'te' ? TELUGU_PITCH_TEMPLATES : PITCH_TEMPLATES;
+      const isTe = currentLanguage === 'te';
+      const pool = [...getPitchTemplatePool(isTe)];
       const txt = document.getElementById('txtPitchBody');
-      if (txt) txt.value = pool[idx];
+      if (txt && selectedPitchVariantIndex >= 0 && selectedPitchVariantIndex < 5) {
+        pool[selectedPitchVariantIndex] = txt.value;
+        savePitchTemplatePool(pool, isTe);
+      }
+      selectedPitchVariantIndex = Math.max(0, Math.min(4, idx));
+      if (txt) txt.value = pool[selectedPitchVariantIndex];
+      for (let i = 0; i < 5; i++) {
+        const tab = document.getElementById('btnVariantTab' + i);
+        if (tab) tab.className = i === selectedPitchVariantIndex
+          ? 'py-1.5 rounded-lg bg-emerald-600 text-white cursor-pointer shadow-xs'
+          : 'py-1.5 rounded-lg text-slate-700 hover:bg-white cursor-pointer';
+      }
+      const title = document.getElementById('lblActiveVariantTitle');
+      if (title) title.innerText = `Variant ${selectedPitchVariantIndex + 1} (Template sent to Lead ${selectedPitchVariantIndex + 1}):`;
       updatePitchPreview();
     }
 
     function updatePitchPreview() {
-      const pool = currentLanguage === 'te' ? TELUGU_PITCH_TEMPLATES : PITCH_TEMPLATES;
-      const customVal = document.getElementById('txtPitchBody')?.value || pool[0];
+      const pool = [...getPitchTemplatePool(currentLanguage === 'te')];
+      const txt = document.getElementById('txtPitchBody');
+      if (txt && selectedPitchVariantIndex >= 0 && selectedPitchVariantIndex < 5) {
+        pool[selectedPitchVariantIndex] = txt.value;
+        savePitchTemplatePool(pool, currentLanguage === 'te');
+      }
       const box = document.getElementById('previewMessageBox');
-      if (box) box.innerText = customVal;
+      if (box) box.innerText = txt?.value || pool[selectedPitchVariantIndex] || pool[0];
     }
 
     function savePitchSettings() {
       senderBusiness = document.getElementById('inputSenderName').value.trim() || senderBusiness;
       senderPhone = document.getElementById('inputSenderPhone').value.trim() || senderPhone;
+      const pool = [...getPitchTemplatePool(currentLanguage === 'te')];
+      const txt = document.getElementById('txtPitchBody');
+      if (txt) pool[selectedPitchVariantIndex] = txt.value;
+      savePitchTemplatePool(pool, currentLanguage === 'te');
+      localStorage.setItem('man_thru_sender_business', senderBusiness);
+      localStorage.setItem('man_thru_sender_phone', senderPhone);
       closePitchModal();
-      showToast('Settings saved.');
+      showToast('All 5 message variants saved. Next recipient gets the next variant.');
     }
 
     function openAddLeadModal() {

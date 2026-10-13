@@ -1873,20 +1873,7 @@ Business: Man Thru B2B Network</textarea>
       localStorage.removeItem('man_thru_sent_today');
     } catch(e) { dashboardLeads = []; }
 
-    // Persist the active discovery result table so cooldown completion or a browser refresh
-    // does not force the user to repeat the same business search.
     let currentSearchTableLeads = [];
-    try {
-      const savedSearchResults = JSON.parse(localStorage.getItem('man_thru_current_search_results_v1') || '[]');
-      if (Array.isArray(savedSearchResults)) currentSearchTableLeads = savedSearchResults;
-    } catch (e) { currentSearchTableLeads = []; }
-    function persistCurrentSearchResults() {
-      try {
-        localStorage.setItem('man_thru_current_search_results_v1', JSON.stringify(currentSearchTableLeads));
-      } catch (e) {
-        console.warn('Could not persist discovery results:', e);
-      }
-    }
     let currentView = 'dashboard';
     let currentDashTab = 'all';
     let currentLanguage = 'en';
@@ -2116,9 +2103,6 @@ Business: Man Thru B2B Network</textarea>
         else updateCooldownUI();
       }
     }, 1000);
-
-    // Re-render the saved discovery table after a refresh, including after a rest period.
-    if (currentSearchTableLeads.length) renderTable();
 
     // Restore the mandatory break gate immediately after refresh; the dashboard remains view-only.
     if (cooldownEndTime > Date.now()) {
@@ -2372,7 +2356,6 @@ Business: Man Thru B2B Network</textarea>
 
           if (cleanLeads.length === 0) {
             currentSearchTableLeads = [];
-            persistCurrentSearchResults();
             renderTable();
             showToast(srvData.message || (currentLanguage === 'te' ? 'ఈ ప్రాంతంలో ఎటువంటి వ్యాపారాలు కనుగొనబడలేదు.' : 'No businesses found matching criteria in this area.'));
             return;
@@ -2386,7 +2369,6 @@ Business: Man Thru B2B Network</textarea>
           });
 
           currentSearchTableLeads = cleanLeads;
-          persistCurrentSearchResults();
           dashboardLeads = [...newUnique, ...dashboardLeads];
           saveDashboardLeads();
 
@@ -2403,7 +2385,6 @@ Business: Man Thru B2B Network</textarea>
       } catch (err) {
         console.error('Server-side business search failed:', err);
         currentSearchTableLeads = [];
-        persistCurrentSearchResults();
         renderTable();
         const detail = String(err && err.message || 'Search service unavailable');
         showToast(currentLanguage === 'te'
@@ -2518,14 +2499,12 @@ Business: Man Thru B2B Network</textarea>
 
     function deleteSearchRow(id) {
       currentSearchTableLeads = currentSearchTableLeads.filter(l => l.id !== id);
-      persistCurrentSearchResults();
       dashboardLeads = dashboardLeads.filter(l => l.id !== id);
       saveDashboardLeads(); renderTable(); renderDashboard(); showToast('Removed from table.');
     }
 
     function clearSearchTableOnly() {
       currentSearchTableLeads = [];
-      persistCurrentSearchResults();
       renderTable();
       showToast(currentLanguage === 'te' 
         ? '✓ సెర్చ్ టేబుల్ వీక్షణ క్లియర్ చేయబడింది (సేవ్ చేసిన లీడ్స్ అలాగే ఉంటాయి).' 

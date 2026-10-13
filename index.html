@@ -1502,8 +1502,8 @@
             </div>
 
             <div class="p-3 bg-slate-800/80 rounded-xl border border-slate-700 space-y-1">
-              <span class="font-bold text-emerald-300">2. 20 మెసేజ్‌ల బ్యాచ్ సైకిల్ &amp; 15 నిమిషాల తప్పనిసరి విశ్రాంతి (Batch Rest)</span><br>
-              ప్రతి 20 మెసేజ్‌లు పూర్తవగానే సిస్టమ్ ఆటోమేటిక్‌గా 15 నిమిషాల పాటు కూల్‌డౌన్ లాక్ విధిస్తుంది. ఈ విరామం వాట్సాప్ సెక్యూరిటీ రేడార్ నుండి మీ నంబర్‌ను పూర్తిగా కాపాడుతుంది.
+              <span class="font-bold text-emerald-300">2. 15 మెసేజ్‌ల బ్యాచ్ సైకిల్ &amp; 15 నిమిషాల తప్పనిసరి విశ్రాంతి (Batch Rest)</span><br>
+              ప్రతి 15 మెసేజ్‌లు పూర్తవగానే సిస్టమ్ ఆటోమేటిక్‌గా 15 నిమిషాల పాటు కూల్‌డౌన్ లాక్ విధిస్తుంది. ఈ విరామం వాట్సాప్ సెక్యూరిటీ రేడార్ నుండి మీ నంబర్‌ను పూర్తిగా కాపాడుతుంది.
             </div>
 
             <div class="p-3 bg-slate-800/80 rounded-xl border border-slate-700 space-y-1">
@@ -1579,7 +1579,7 @@ Business: Man Thru B2B Network</textarea>
 
             <div class="p-3 bg-slate-800/80 rounded-xl border border-slate-700 space-y-1">
               <span class="font-bold text-emerald-300">2. 20-Message Batch Cycles &amp; 15-Minute Mandatory Cooldown</span><br>
-              After every 20 dispatched messages, the system automatically triggers a 15-minute batch cooldown timer to let your connection settle, keeping your WhatsApp account health completely off security radars.
+              After every 15 dispatched messages, the system automatically triggers a 15-minute batch cooldown timer to let your connection settle, keeping your WhatsApp account health completely off security radars.
             </div>
 
             <div class="p-3 bg-slate-800/80 rounded-xl border border-slate-700 space-y-1">
@@ -1873,32 +1873,19 @@ Business: Man Thru B2B Network</textarea>
       localStorage.removeItem('man_thru_sent_today');
     } catch(e) { dashboardLeads = []; }
 
-    // Persist the active discovery result table so cooldown completion or a browser refresh
-    // does not force the user to repeat the same business search.
     let currentSearchTableLeads = [];
-    try {
-      const savedSearchResults = JSON.parse(localStorage.getItem('man_thru_current_search_results_v1') || '[]');
-      if (Array.isArray(savedSearchResults)) currentSearchTableLeads = savedSearchResults;
-    } catch (e) { currentSearchTableLeads = []; }
-    function persistCurrentSearchResults() {
-      try {
-        localStorage.setItem('man_thru_current_search_results_v1', JSON.stringify(currentSearchTableLeads));
-      } catch (e) {
-        console.warn('Could not persist discovery results:', e);
-      }
-    }
     let currentView = 'dashboard';
     let currentDashTab = 'all';
     let currentLanguage = 'en';
     let sentTodayCount = Number(localStorage.getItem('man_thru_sent_today') || '0') || 0;
-    let batchCounter = Number(localStorage.getItem('man_thru_batch_count_v2') || '0') || 0;
+    let batchCounter = Number(localStorage.getItem('man_thru_batch_count') || '0') || 0;
     let cooldownEndTime = Number(localStorage.getItem('man_thru_cooldown_end') || '0') || 0;
 
     if (cooldownEndTime && Date.now() >= cooldownEndTime) {
       cooldownEndTime = 0;
       batchCounter = 0;
       localStorage.removeItem('man_thru_cooldown_end');
-      localStorage.setItem('man_thru_batch_count_v2', '0');
+      localStorage.setItem('man_thru_batch_count', '0');
     } else if (!cooldownEndTime && batchCounter >= 20) {
       cooldownEndTime = Date.now() + (15 * 60 * 1000);
       localStorage.setItem('man_thru_cooldown_end', cooldownEndTime.toString());
@@ -1999,7 +1986,7 @@ Business: Man Thru B2B Network</textarea>
       renderTable();
       renderDashboardTable();
       showToast(currentLanguage === 'te' 
-        ? '🛡️ 20 మెసేజ్‌ల బ్యాచ్ పూర్తయింది! 15 నిమిషాల కూల్-డౌన్ లాక్ ప్రారంభమైంది.' 
+        ? '🛡️ 15 మెసేజ్ ల బ్యాచ్ పూర్తయింది! 15 నిమిషాల కూల్-డౌన్ లాక్ ప్రారంభమైంది.' 
         : '🛡️ 20-message batch complete! 15-minute rest cooldown activated.');
     }
 
@@ -2007,7 +1994,7 @@ Business: Man Thru B2B Network</textarea>
       cooldownEndTime = 0;
       batchCounter = 0;
       localStorage.removeItem('man_thru_cooldown_end');
-      localStorage.setItem('man_thru_batch_count_v2', '0');
+      localStorage.setItem('man_thru_batch_count', '0');
       closeCooldownModal();
       playUnlockChime();
       updateCooldownUI();
@@ -2031,7 +2018,6 @@ Business: Man Thru B2B Network</textarea>
     function enforceCooldownInteractionLock(event) {
       if (!isCooldownActive()) return;
       const target = event.target instanceof Element ? event.target : null;
-      // Only this button may dismiss the overlay so the dashboard can be viewed; it grants no feature access.
       if (event.type === 'click' && target && target.closest('#btnCooldownClose')) return;
       event.preventDefault();
       event.stopPropagation();
@@ -2039,7 +2025,7 @@ Business: Man Thru B2B Network</textarea>
       if (event.type === 'click') {
         const modal = document.getElementById('modalCooldownLock');
         if (modal && modal.classList.contains('hidden')) openCooldownModal();
-        showToast(currentLanguage === 'te' ? '15 నిమిషాల బ్రేక్ పూర్తయ్యే వరకు search, import, stepper, autopilot మరియు messaging lock‌లో ఉంటాయి.' : 'Search, import, stepper, autopilot and messaging are locked until the 15-minute break ends.');
+        showToast(currentLanguage === 'te' ? '15 నిమిషాల బ్రేక్ పూర్తయ్యే వరకు అన్ని ఫీచర్లు లాక్‌లో ఉంటాయి.' : 'All features are locked until the 15-minute rest timer ends.');
       }
     }
     ['click', 'submit', 'input', 'change', 'keydown', 'paste', 'drop'].forEach(type => {
@@ -2116,15 +2102,6 @@ Business: Man Thru B2B Network</textarea>
         else updateCooldownUI();
       }
     }, 1000);
-
-    // Re-render the saved discovery table after a refresh, including after a rest period.
-    if (currentSearchTableLeads.length) renderTable();
-
-    // Restore the mandatory break gate immediately after refresh; the dashboard remains view-only.
-    if (cooldownEndTime > Date.now()) {
-      openCooldownModal();
-      updateCooldownUI();
-    }
 
     function normalizeMobile(phone) {
       if (!phone) return '';
@@ -2372,7 +2349,6 @@ Business: Man Thru B2B Network</textarea>
 
           if (cleanLeads.length === 0) {
             currentSearchTableLeads = [];
-            persistCurrentSearchResults();
             renderTable();
             showToast(srvData.message || (currentLanguage === 'te' ? 'ఈ ప్రాంతంలో ఎటువంటి వ్యాపారాలు కనుగొనబడలేదు.' : 'No businesses found matching criteria in this area.'));
             return;
@@ -2386,7 +2362,6 @@ Business: Man Thru B2B Network</textarea>
           });
 
           currentSearchTableLeads = cleanLeads;
-          persistCurrentSearchResults();
           dashboardLeads = [...newUnique, ...dashboardLeads];
           saveDashboardLeads();
 
@@ -2403,7 +2378,6 @@ Business: Man Thru B2B Network</textarea>
       } catch (err) {
         console.error('Server-side business search failed:', err);
         currentSearchTableLeads = [];
-        persistCurrentSearchResults();
         renderTable();
         const detail = String(err && err.message || 'Search service unavailable');
         showToast(currentLanguage === 'te'
@@ -2518,14 +2492,12 @@ Business: Man Thru B2B Network</textarea>
 
     function deleteSearchRow(id) {
       currentSearchTableLeads = currentSearchTableLeads.filter(l => l.id !== id);
-      persistCurrentSearchResults();
       dashboardLeads = dashboardLeads.filter(l => l.id !== id);
       saveDashboardLeads(); renderTable(); renderDashboard(); showToast('Removed from table.');
     }
 
     function clearSearchTableOnly() {
       currentSearchTableLeads = [];
-      persistCurrentSearchResults();
       renderTable();
       showToast(currentLanguage === 'te' 
         ? '✓ సెర్చ్ టేబుల్ వీక్షణ క్లియర్ చేయబడింది (సేవ్ చేసిన లీడ్స్ అలాగే ఉంటాయి).' 
@@ -2600,7 +2572,7 @@ Business: Man Thru B2B Network</textarea>
       sentTodayCount++;
       localStorage.setItem('man_thru_sent_today', sentTodayCount.toString());
       batchCounter++;
-      localStorage.setItem('man_thru_batch_count_v2', batchCounter.toString());
+      localStorage.setItem('man_thru_batch_count', batchCounter.toString());
 
       saveDashboardLeads(); renderDashboard(); renderTable();
       showToast('📋 Message Variant ' + (((batchCounter - 1) % 5) + 1) + '/5 sent to ' + lead.name);
@@ -2688,8 +2660,7 @@ Business: Man Thru B2B Network</textarea>
         const msgPrev = document.getElementById('stepperMsgPreview');
         if (msgPrev) {
           const pool = getPitchTemplatePool(currentLanguage === 'te');
-          const nextVariantIndex = ((batchCounter % pool.length) + pool.length) % pool.length;
-          msgPrev.innerText = `Variant ${nextVariantIndex + 1} of ${pool.length} — ` + renderLeadPitch(pool[nextVariantIndex], lead);
+          msgPrev.innerText = renderLeadPitch(pool[batchCounter % pool.length], lead);
         }
       }
     }
@@ -4314,43 +4285,36 @@ Business: Man Thru B2B Network</textarea>
     }
 
     // ==========================================
-    // 365-DAY AUTOMATED INDIA SPECIAL-DAY & BUSINESS GREETING ENGINE
+    // 365-DAY AUTOMATED FESTIVAL & BUSINESS GREETING ENGINE
     // ==========================================
     const SPECIAL_DAYS_365 = {
       '0-1': { en: 'New Year Day', te: 'నూతన సంవత్సర దినోత్సవం', wish: 'A prosperous and profitable year ahead!' },
-      '0-4': { en: 'World Braille Day', te: 'ప్రపంచ బ్రెయిలీ దినోత్సవం', wish: 'Building a more accessible and inclusive business community!' },
-      '0-23': { en: 'Netaji Subhas Chandra Bose Jayanti / Parakram Diwas', te: 'నేతాజీ సుభాష్ చంద్రబోస్ జయంతి / పరాక్రమ దివస్', wish: 'Courage and determination in every new business step!' },
       '0-12': { en: 'National Youth Day (Swami Vivekananda)', te: 'జాతీయ యువజన దినోత్సవం', wish: 'Inspiring bold entrepreneurial energy and business victory!' },
       '0-13': { en: 'Bhogi Festival Special', te: 'భోగి పండుగ శుభవేళ', wish: 'May new commercial opportunities burn away all obstacles!' },
       '0-14': { en: 'Makara Sankranti / Pongal Harvest Festival', te: 'మకర సంక్రాంతి పర్వదినం', wish: 'Harvesting record crop of wholesale sales & merchant orders!' },
       '0-15': { en: 'Kanuma Farmers & Commerce Celebration', te: 'కనుమ పండుగ శుభాకాంక్షలు', wish: 'Honoring trade, distributors, and market prosperity!' },
       '0-26': { en: 'Republic Day of India', te: 'భారత గణతంత్ర దినోత్సవం', wish: 'Proudly serving our nation with honest commerce & enterprise!' },
 
-      '1-4': { en: 'World Cancer Day', te: 'ప్రపంచ క్యాన్సర్ దినోత్సవం', wish: 'Wishing health, strength and support to every family and community!' },
-      '1-21': { en: 'International Mother Language Day', te: 'అంతర్జాతీయ మాతృభాషా దినోత్సవం', wish: 'Celebrating India’s languages, cultures and communities!' },
+      '1-4': { en: 'World Business Resilience Day', te: 'ప్రపంచ వాణిజ్య స్థైర్య దినోత్సవం', wish: 'Building strong, healthy, resilient business foundations!' },
       '1-14': { en: 'Customer Appreciation & Partnership Day', te: 'కస్టమర్ భాగస్వామ్య దినోత్సవం', wish: 'Cherishing valuable merchant relationships and loyal buyers!' },
       '1-19': { en: 'Chhatrapati Shivaji Maharaj Jayanti', te: 'ఛత్రపతి శివాజీ మహారాజ్ జయంతి', wish: 'Courage, strategic leadership, and commercial victory!' },
       '1-28': { en: 'National Science & Innovation Day', te: 'జాతీయ సైన్స్ & ఇన్నోవేషన్ దినం', wish: 'Adopting smart tech to supercharge your B2B sales outreach!' },
 
-      '2-8': { en: 'International Women’s Day', te: 'అంతర్జాతీయ మహిళా దినోత్సవం', wish: 'Saluting incredible women leaders, merchants and entrepreneurs!' },
-      '2-22': { en: 'World Water Day', te: 'ప్రపంచ జల దినోత్సవం', wish: 'Supporting responsible use of water and natural resources!' },
+      '2-8': { en: 'International Women Entrepreneurs Day', te: 'అంతర్జాతీయ మహిళా దినోత్సవం', wish: 'Saluting incredible women leaders, merchants and entrepreneurs!' },
       '2-15': { en: 'World Consumer Rights Day', te: 'ప్రపంచ వినియోగదారుల హక్కుల దినం', wish: 'Delivering exceptional trust, transparency and quality!' },
       '2-25': { en: 'Holi Festival of Colors & Joy', te: 'హోలీ రంగుల పండుగ శుభాకాంక్షలు', wish: 'Filling your cash counters with vibrant colors of profit!' },
       '2-30': { en: 'Ugadi Telugu New Year Celebration', te: 'శ్రీ క్రోధినామ సంవత్సర ఉగాది శుభాకాంక్షలు', wish: 'షడ్రుచుల ఉగాది శుభవేళ మీ వ్యాపారం దినదినాభివృద్ధి చెందాలి!' },
 
-      '3-7': { en: 'World Health Day', te: 'ప్రపంచ ఆరోగ్య దినోత్సవం', wish: 'Wishing health and wellbeing to every business owner and team!' },
       '3-5': { en: 'National Maritime & Wholesale Logistics Day', te: 'జాతీయ వాణిజ్య & రవాణా దినం', wish: 'Smooth logistics, on-time dispatches, and thriving trade!' },
       '3-14': { en: 'Dr. B.R. Ambedkar Jayanti', te: 'డా. బి.ఆర్. అంబేద్కర్ జయంతి', wish: 'Championing equality, education, and economic empowerment!' },
       '3-17': { en: 'Sri Rama Navami Auspicious Festival', te: 'శ్రీరామ నవమి పర్వదినం', wish: 'May Lord Rama bless your business with truth, strength and success!' },
       '3-22': { en: 'World Earth Day & Sustainable Commerce', te: 'ప్రపంచ ధరిత్రి దినోత్సవం', wish: 'Prospering with clean, responsible and conscious business!' },
 
       '4-1': { en: 'International Workers & May Day', te: 'మే డే - శ్రామిక దినోత్సవం', wish: 'Saluting hardworking teams, delivery associates & partners!' },
-      '4-8': { en: 'World Red Cross and Red Crescent Day', te: 'ప్రపంచ రెడ్ క్రాస్ దినోత్సవం', wish: 'Honouring compassion, service and care for others!' },
       '4-9': { en: 'Rabindranath Tagore Jayanti', te: 'రవీంద్రనాథ్ ఠాగూర్ జయంతి', wish: 'Inspiring visionary innovation and entrepreneurial spirit!' },
       '4-31': { en: 'World Healthy Living & Commerce Day', te: 'ఆరోగ్యవంతమైన జీవన దినోత్సవం', wish: 'Promoting vitality, energy, and high commercial stamina!' },
 
       '5-2': { en: 'Telangana State Formation Day', te: 'తెలంగాణ రాష్ట్ర ఆవిర్భావ దినోత్సవం', wish: 'Celebrating the vibrant economic spirit and growth of Telangana!' },
-      '5-14': { en: 'World Blood Donor Day', te: 'ప్రపంచ రక్తదాతల దినోత్సవం', wish: 'Celebrating generosity and life-saving community service!' },
       '5-5': { en: 'World Environment Day', te: 'ప్రపంచ పర్యావరణ దినోత్సవం', wish: 'Eco-friendly growth and sustainable retail supply chains!' },
       '5-21': { en: 'International Yoga Day', te: 'అంతర్జాతీయ యోగా దినోత్సవం', wish: 'Calm leadership, focused strategy and balanced business growth!' },
       '5-27': { en: 'World MSME Day (Small & Medium Enterprises)', te: 'ప్రపంచ సూక్ష్మ, చిన్న & మధ్య తరహా పరిశ్రమల దినం', wish: 'Saluting the backbone of the economy - our MSME enterprises!' },
@@ -4413,11 +4377,14 @@ Business: Man Thru B2B Network</textarea>
       const isTe = (typeof currentLanguage !== 'undefined' && currentLanguage === 'te');
       
       let targetName = '';
-      // Only personalize after a real active login. Never show a previous account's
-      // business name on the logged-out landing screen.
       const loggedUser = (typeof getActiveUser === 'function') ? getActiveUser() : null;
       if (loggedUser && (loggedUser.businessName || loggedUser.username || loggedUser.name)) {
         targetName = loggedUser.businessName || loggedUser.username || loggedUser.name;
+      } else if (typeof activeAccountData !== 'undefined' && activeAccountData && (activeAccountData.businessName || activeAccountData.username || activeAccountData.name)) {
+        targetName = activeAccountData.businessName || activeAccountData.username || activeAccountData.name;
+      }
+      if (targetName === 'Sri Balaji Wholesale Traders') {
+        targetName = '';
       }
       
       const occasionTitle = isTe ? occasion.te : occasion.en;

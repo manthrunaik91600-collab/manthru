@@ -1873,7 +1873,20 @@ Business: Man Thru B2B Network</textarea>
       localStorage.removeItem('man_thru_sent_today');
     } catch(e) { dashboardLeads = []; }
 
+    // Persist the active discovery result table so cooldown completion or a browser refresh
+    // does not force the user to repeat the same business search.
     let currentSearchTableLeads = [];
+    try {
+      const savedSearchResults = JSON.parse(localStorage.getItem('man_thru_current_search_results_v1') || '[]');
+      if (Array.isArray(savedSearchResults)) currentSearchTableLeads = savedSearchResults;
+    } catch (e) { currentSearchTableLeads = []; }
+    function persistCurrentSearchResults() {
+      try {
+        localStorage.setItem('man_thru_current_search_results_v1', JSON.stringify(currentSearchTableLeads));
+      } catch (e) {
+        console.warn('Could not persist discovery results:', e);
+      }
+    }
     let currentView = 'dashboard';
     let currentDashTab = 'all';
     let currentLanguage = 'en';
@@ -2103,6 +2116,9 @@ Business: Man Thru B2B Network</textarea>
         else updateCooldownUI();
       }
     }, 1000);
+
+    // Re-render the saved discovery table after a refresh, including after a rest period.
+    if (currentSearchTableLeads.length) renderTable();
 
     // Restore the mandatory break gate immediately after refresh; the dashboard remains view-only.
     if (cooldownEndTime > Date.now()) {
@@ -2356,6 +2372,7 @@ Business: Man Thru B2B Network</textarea>
 
           if (cleanLeads.length === 0) {
             currentSearchTableLeads = [];
+            persistCurrentSearchResults();
             renderTable();
             showToast(srvData.message || (currentLanguage === 'te' ? 'ఈ ప్రాంతంలో ఎటువంటి వ్యాపారాలు కనుగొనబడలేదు.' : 'No businesses found matching criteria in this area.'));
             return;
@@ -2368,8 +2385,24 @@ Business: Man Thru B2B Network</textarea>
             return !existingKeys.has(k);
           });
 
+          // Keep each lead's existing outreach status when the same discovery results are
+          // fetched again; this prevents already-contacted rows from becoming fresh leads.
+          const priorByKey = new Map();
+          [...dashboardLeads, ...currentSearchTableLeads].forEach(oldLead => {
+            const key = oldLead.placeId || oldLead.id || `${(oldLead.name||'').toLowerCase()}_${(oldLead.address||'').toLowerCase()}`;
+            if (key) priorByKey.set(key, oldLead);
+          });
+          cleanLeads = cleanLeads.map(lead => {
+            const key = lead.placeId || lead.id || `${(lead.name||'').toLowerCase()}_${(lead.address||'').toLowerCase()}`;
+            const previous = priorByKey.get(key);
+            return previous ? { ...lead, status: previous.status || lead.status || 'New Lead', lastContactedAt: previous.lastContactedAt || lead.lastContactedAt || null } : { ...lead, status: lead.status || 'New Lead' };
+          });
           currentSearchTableLeads = cleanLeads;
+          persistCurrentSearchResults();
           dashboardLeads = [...newUnique, ...dashboardLeads];
+          // Merge current search statuses back into the saved account list.
+          const statusById = new Map(cleanLeads.map(l => [l.id, l]));
+          dashboardLeads = dashboardLeads.map(l => statusById.has(l.id) ? { ...l, status: statusById.get(l.id).status, lastContactedAt: statusById.get(l.id).lastContactedAt || l.lastContactedAt } : l);
           saveDashboardLeads();
 
           showToast(currentLanguage === 'te' 
@@ -2385,6 +2418,7 @@ Business: Man Thru B2B Network</textarea>
       } catch (err) {
         console.error('Server-side business search failed:', err);
         currentSearchTableLeads = [];
+        persistCurrentSearchResults();
         renderTable();
         const detail = String(err && err.message || 'Search service unavailable');
         showToast(currentLanguage === 'te'
@@ -2499,12 +2533,14 @@ Business: Man Thru B2B Network</textarea>
 
     function deleteSearchRow(id) {
       currentSearchTableLeads = currentSearchTableLeads.filter(l => l.id !== id);
+      persistCurrentSearchResults();
       dashboardLeads = dashboardLeads.filter(l => l.id !== id);
       saveDashboardLeads(); renderTable(); renderDashboard(); showToast('Removed from table.');
     }
 
     function clearSearchTableOnly() {
       currentSearchTableLeads = [];
+      persistCurrentSearchResults();
       renderTable();
       showToast(currentLanguage === 'te' 
         ? '✓ సెర్చ్ టేబుల్ వీక్షణ క్లియర్ చేయబడింది (సేవ్ చేసిన లీడ్స్ అలాగే ఉంటాయి).' 
@@ -2576,6 +2612,13 @@ Business: Man Thru B2B Network</textarea>
       window.open(`https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(finalMsg)}`, '_blank');
       lead.status = 'Contacted';
       lead.lastContactedAt = new Date().toISOString();
+      // Persist status to both the discovery table and account leads so the next batch
+      // resumes at the first untouched business after the 15-minute cooldown.
+      [currentSearchTableLeads, dashboardLeads].forEach(list => {
+        const match = list.find(item => item.id === lead.id || (lead.placeId && item.placeId === lead.placeId));
+        if (match) { match.status = 'Contacted'; match.lastContactedAt = lead.lastContactedAt; }
+      });
+      persistCurrentSearchResults();
       sentTodayCount++;
       localStorage.setItem('man_thru_sent_today', sentTodayCount.toString());
       batchCounter++;
@@ -2621,15 +2664,20 @@ Business: Man Thru B2B Network</textarea>
         return;
       }
       if (isCooldownActive()) { openCooldownModal(); return; }
-      let pool = currentSearchTableLeads.length > 0 ? currentSearchTableLeads : dashboardLeads;
+      const pool = currentSearchTableLeads.length > 0 ? currentSearchTableLeads : dashboardLeads;
       if (pool.length === 0) {
-        pool = generateAuthenticLeads('Medchal', 'kirana shops', 20);
-        currentSearchTableLeads = pool;
-        dashboardLeads = [...pool];
-        saveDashboardLeads(); renderTable(); renderDashboard();
+        showToast(currentLanguage === 'te' ? 'ముందుగా Discover Businesses ద్వారా ఫలితాలు తీసుకోండి.' : 'Please run Discover Businesses first.');
+        return;
       }
-      stepperLeadsQueue = pool.filter(l => isValidMobile(l.phone));
-      if (stepperLeadsQueue.length === 0) stepperLeadsQueue = pool;
+      // Resume the same result table at the first lead not yet contacted.
+      // Do not regenerate or reset the discovery results after a cooldown.
+      const remainingPool = pool.filter(l => String(l.status || '').toLowerCase() !== 'contacted');
+      stepperLeadsQueue = remainingPool.filter(l => isValidMobile(l.phone));
+      if (stepperLeadsQueue.length === 0) stepperLeadsQueue = remainingPool;
+      if (stepperLeadsQueue.length === 0) {
+        showToast(currentLanguage === 'te' ? 'ఈ search లో అన్ని businesses కి messages పంపించావు. తర్వాత కొత్త search చేయొచ్చు.' : 'All businesses in this search have been contacted. You can run a new search.');
+        return;
+      }
       currentStepperIndex = 0;
       stopAutopilot();
       updateStepperModal();

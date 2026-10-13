@@ -1,0 +1,11 @@
+Man Thru repair package
+
+IMPORTANT: This package is prepared from the project files available in the conversation. It has not been deployed to your Render account or browser-tested against your live service.
+
+GitHub upload: extract this ZIP and upload the CONTENTS to the root of https://github.com/manthrun aik91600-collab/manthru (do not upload the ZIP itself). Keep the existing Render Environment Variables. Do not delete the Render service.
+
+Files included: index.html, server.js, package.json, React/TypeScript source files, assets, and .env.example.
+
+Render: after commit, open the manthru service > Events/Deploys and check the newest deployment. If it fails, open that failed deploy and inspect its logs.
+
+This package adds a direct click handler to the Register/Login button to show #modalVault. The existing calendar/ticker is preserved.

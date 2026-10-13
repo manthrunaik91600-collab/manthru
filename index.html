@@ -83,7 +83,7 @@
 
       <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80 text-xs">
         <div class="flex flex-wrap items-center gap-2">
-          <button id="btnVaultHeader" onclick="openVaultModal()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 rounded-xl font-bold transition cursor-pointer"><span>📱 Register / Login</span></button>
+          <button id="btnVaultHeader" data-manthru-auth-trigger="1" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 rounded-xl font-bold transition cursor-pointer"><span>📱 Register / Login</span></button>
           <button id="btnHeaderSub" onclick="openPaywallModal()" class="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-xl text-xs shadow-md cursor-pointer flex items-center gap-1.5"><span id="btnHeaderSubText">💎 Pro Plan (₹499)</span></button>
           <button id="btnHeaderAdmin" onclick="openAdminAuthFlow()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-xl text-xs shadow-md cursor-pointer flex items-center gap-1.5"><span id="btnHeaderAdminText">👑 Admin Panel</span></button>
           <button id="btnLangToggle" onclick="toggleLanguage()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/40 rounded-xl font-bold transition cursor-pointer" title="Click to toggle language between English and Telugu">
@@ -1579,7 +1579,7 @@ Business: Man Thru B2B Network</textarea>
 
             <div class="p-3 bg-slate-800/80 rounded-xl border border-slate-700 space-y-1">
               <span class="font-bold text-emerald-300">2. 20-Message Batch Cycles &amp; 15-Minute Mandatory Cooldown</span><br>
-              After every 15 dispatched messages, the system automatically triggers a 15-minute batch cooldown timer to let your connection settle, keeping your WhatsApp account health completely off security radars.
+              After every 20 dispatched messages, the system automatically triggers a 15-minute batch cooldown timer to let your connection settle, keeping your WhatsApp account health completely off security radars.
             </div>
 
             <div class="p-3 bg-slate-800/80 rounded-xl border border-slate-700 space-y-1">
@@ -1870,22 +1870,39 @@ Business: Man Thru B2B Network</textarea>
         dashboardLeads = [];
       }
       localStorage.removeItem(FRESH_DB_KEY);
-      localStorage.removeItem('man_thru_sent_today');
     } catch(e) { dashboardLeads = []; }
 
     let currentSearchTableLeads = [];
+    function searchResultsKey(mobile = localStorage.getItem('man_thru_active_vault_mobile')) {
+      return mobile ? 'man_thru_current_search_results_v1_' + String(mobile).replace(/\D/g, '') : null;
+    }
+    function persistCurrentSearchResults() {
+      const key = searchResultsKey();
+      if (!key) return;
+      try { localStorage.setItem(key, JSON.stringify(currentSearchTableLeads)); } catch (e) { console.warn('Search results could not be saved', e); }
+    }
+    function restoreCurrentSearchResults(mobile = localStorage.getItem('man_thru_active_vault_mobile')) {
+      currentSearchTableLeads = [];
+      if (!mobile || !activeAccountData) return;
+      try {
+        const raw = localStorage.getItem(searchResultsKey(mobile));
+        const saved = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(saved)) currentSearchTableLeads = saved;
+      } catch (e) { currentSearchTableLeads = []; }
+    }
+    if (activeAccountData) restoreCurrentSearchResults();
     let currentView = 'dashboard';
     let currentDashTab = 'all';
     let currentLanguage = 'en';
     let sentTodayCount = Number(localStorage.getItem('man_thru_sent_today') || '0') || 0;
-    let batchCounter = Number(localStorage.getItem('man_thru_batch_count') || '0') || 0;
+    let batchCounter = Number(localStorage.getItem('man_thru_batch_count_v2') || '0') || 0;
     let cooldownEndTime = Number(localStorage.getItem('man_thru_cooldown_end') || '0') || 0;
 
     if (cooldownEndTime && Date.now() >= cooldownEndTime) {
       cooldownEndTime = 0;
       batchCounter = 0;
       localStorage.removeItem('man_thru_cooldown_end');
-      localStorage.setItem('man_thru_batch_count', '0');
+      localStorage.setItem('man_thru_batch_count_v2', '0');
     } else if (!cooldownEndTime && batchCounter >= 20) {
       cooldownEndTime = Date.now() + (15 * 60 * 1000);
       localStorage.setItem('man_thru_cooldown_end', cooldownEndTime.toString());
@@ -1978,6 +1995,11 @@ Business: Man Thru B2B Network</textarea>
     }
 
     function trigger15MessageCooldown() {
+      if (cooldownEndTime && cooldownEndTime > Date.now()) {
+        updateCooldownUI();
+        openCooldownModal();
+        return;
+      }
       cooldownEndTime = Date.now() + (15 * 60 * 1000);
       localStorage.setItem('man_thru_cooldown_end', cooldownEndTime.toString());
       if (isAutopilotRunning) stopAutopilot();
@@ -1986,7 +2008,7 @@ Business: Man Thru B2B Network</textarea>
       renderTable();
       renderDashboardTable();
       showToast(currentLanguage === 'te' 
-        ? '🛡️ 15 మెసేజ్ ల బ్యాచ్ పూర్తయింది! 15 నిమిషాల కూల్-డౌన్ లాక్ ప్రారంభమైంది.' 
+        ? '🛡️ 20 మెసేజ్‌ల బ్యాచ్ పూర్తయింది! 15 నిమిషాల కూల్-డౌన్ లాక్ ప్రారంభమైంది.' 
         : '🛡️ 20-message batch complete! 15-minute rest cooldown activated.');
     }
 
@@ -1994,7 +2016,7 @@ Business: Man Thru B2B Network</textarea>
       cooldownEndTime = 0;
       batchCounter = 0;
       localStorage.removeItem('man_thru_cooldown_end');
-      localStorage.setItem('man_thru_batch_count', '0');
+      localStorage.setItem('man_thru_batch_count_v2', '0');
       closeCooldownModal();
       playUnlockChime();
       updateCooldownUI();
@@ -2298,6 +2320,12 @@ Business: Man Thru B2B Network</textarea>
     }
 
     async function executeGoogleSearch() {
+      if (currentSearchTableLeads.some(l => String(l.status || '').toLowerCase() !== 'contacted')) {
+        showToast(currentLanguage === 'te'
+          ? 'ముందుగా ప్రస్తుత searchలో మిగిలిన businesses పూర్తి చేయండి. Break తర్వాత అదే listలో కొనసాగించండి.'
+          : 'Finish the remaining businesses in the current search first. After the break, continue in the same list.');
+        return;
+      }
       if (!isSubscriptionValid()) {
         openPaywallModal();
         showToast(currentLanguage === 'te' 
@@ -2349,6 +2377,7 @@ Business: Man Thru B2B Network</textarea>
 
           if (cleanLeads.length === 0) {
             currentSearchTableLeads = [];
+            persistCurrentSearchResults();
             renderTable();
             showToast(srvData.message || (currentLanguage === 'te' ? 'ఈ ప్రాంతంలో ఎటువంటి వ్యాపారాలు కనుగొనబడలేదు.' : 'No businesses found matching criteria in this area.'));
             return;
@@ -2362,6 +2391,7 @@ Business: Man Thru B2B Network</textarea>
           });
 
           currentSearchTableLeads = cleanLeads;
+          persistCurrentSearchResults();
           dashboardLeads = [...newUnique, ...dashboardLeads];
           saveDashboardLeads();
 
@@ -2377,7 +2407,6 @@ Business: Man Thru B2B Network</textarea>
         }
       } catch (err) {
         console.error('Server-side business search failed:', err);
-        currentSearchTableLeads = [];
         renderTable();
         const detail = String(err && err.message || 'Search service unavailable');
         showToast(currentLanguage === 'te'
@@ -2475,6 +2504,7 @@ Business: Man Thru B2B Network</textarea>
     function updateLeadStatus(id, newStatus) {
       const lead1 = currentSearchTableLeads.find(l => l.id === id); if (lead1) lead1.status = newStatus;
       const lead2 = dashboardLeads.find(l => l.id === id); if (lead2) lead2.status = newStatus;
+      persistCurrentSearchResults();
       saveDashboardLeads(); renderDashboard();
     }
 
@@ -2492,12 +2522,14 @@ Business: Man Thru B2B Network</textarea>
 
     function deleteSearchRow(id) {
       currentSearchTableLeads = currentSearchTableLeads.filter(l => l.id !== id);
+      persistCurrentSearchResults();
       dashboardLeads = dashboardLeads.filter(l => l.id !== id);
       saveDashboardLeads(); renderTable(); renderDashboard(); showToast('Removed from table.');
     }
 
     function clearSearchTableOnly() {
       currentSearchTableLeads = [];
+      persistCurrentSearchResults();
       renderTable();
       showToast(currentLanguage === 'te' 
         ? '✓ సెర్చ్ టేబుల్ వీక్షణ క్లియర్ చేయబడింది (సేవ్ చేసిన లీడ్స్ అలాగే ఉంటాయి).' 
@@ -2569,10 +2601,15 @@ Business: Man Thru B2B Network</textarea>
       window.open(`https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(finalMsg)}`, '_blank');
       lead.status = 'Contacted';
       lead.lastContactedAt = new Date().toISOString();
+      const matchingSearchLead = currentSearchTableLeads.find(l => l.id === lead.id || (lead.placeId && l.placeId === lead.placeId));
+      if (matchingSearchLead) { matchingSearchLead.status = 'Contacted'; matchingSearchLead.lastContactedAt = lead.lastContactedAt; }
+      const matchingDashboardLead = dashboardLeads.find(l => l.id === lead.id || (lead.placeId && l.placeId === lead.placeId));
+      if (matchingDashboardLead) { matchingDashboardLead.status = 'Contacted'; matchingDashboardLead.lastContactedAt = lead.lastContactedAt; }
+      persistCurrentSearchResults();
       sentTodayCount++;
       localStorage.setItem('man_thru_sent_today', sentTodayCount.toString());
       batchCounter++;
-      localStorage.setItem('man_thru_batch_count', batchCounter.toString());
+      localStorage.setItem('man_thru_batch_count_v2', batchCounter.toString());
 
       saveDashboardLeads(); renderDashboard(); renderTable();
       showToast('📋 Message Variant ' + (((batchCounter - 1) % 5) + 1) + '/5 sent to ' + lead.name);
@@ -2614,15 +2651,18 @@ Business: Man Thru B2B Network</textarea>
         return;
       }
       if (isCooldownActive()) { openCooldownModal(); return; }
-      let pool = currentSearchTableLeads.length > 0 ? currentSearchTableLeads : dashboardLeads;
+      const pool = currentSearchTableLeads.length > 0 ? currentSearchTableLeads : dashboardLeads;
       if (pool.length === 0) {
-        pool = generateAuthenticLeads('Medchal', 'kirana shops', 20);
-        currentSearchTableLeads = pool;
-        dashboardLeads = [...pool];
-        saveDashboardLeads(); renderTable(); renderDashboard();
+        showToast(currentLanguage === 'te' ? 'ముందుగా Discover Businesses ద్వారా నిజమైన search results తీసుకోండి.' : 'Run Discover Businesses first to load real search results.');
+        return;
       }
-      stepperLeadsQueue = pool.filter(l => isValidMobile(l.phone));
-      if (stepperLeadsQueue.length === 0) stepperLeadsQueue = pool;
+      const remainingPool = pool.filter(l => String(l.status || '').toLowerCase() !== 'contacted');
+      if (remainingPool.length === 0) {
+        showToast(currentLanguage === 'te' ? 'ఈ searchలో అన్ని businesses పూర్తయ్యాయి. ఇప్పుడు కొత్త search చేయవచ్చు.' : 'All businesses in this search are completed. You can run a new search now.');
+        return;
+      }
+      stepperLeadsQueue = remainingPool.filter(l => isValidMobile(l.phone));
+      if (stepperLeadsQueue.length === 0) stepperLeadsQueue = remainingPool;
       currentStepperIndex = 0;
       stopAutopilot();
       updateStepperModal();
@@ -2685,7 +2725,7 @@ Business: Man Thru B2B Network</textarea>
         currentStepperIndex++;
       }
       if (batchCounter >= 20) {
-        stopAutopilot(); trigger15MessageCooldown(); return;
+        stopAutopilot(); return;
       }
       if (currentStepperIndex < stepperLeadsQueue.length) {
         updateStepperModal();
@@ -2722,7 +2762,7 @@ Business: Man Thru B2B Network</textarea>
         currentStepperIndex++;
       }
       if (batchCounter >= 20) {
-        stopAutopilot(); trigger15MessageCooldown(); return;
+        stopAutopilot(); return;
       }
       if (currentStepperIndex < stepperLeadsQueue.length) {
         updateStepperModal();
@@ -2771,7 +2811,7 @@ Business: Man Thru B2B Network</textarea>
           if (nextLead) {
             sendWhatsAppStandalone(nextLead.id);
             currentStepperIndex++;
-            if (batchCounter >= 20) { stopAutopilot(); trigger15MessageCooldown(); return; }
+            if (batchCounter >= 20) { stopAutopilot(); return; }
             if (currentStepperIndex < stepperLeadsQueue.length && isAutopilotRunning) {
               updateStepperModal();
               startDelayCountdownForNextLead();
@@ -2899,6 +2939,7 @@ Business: Man Thru B2B Network</textarea>
 
     function saveDashboardLeads() {
       try {
+        persistCurrentSearchResults();
         localStorage.setItem(FRESH_DB_KEY, JSON.stringify(dashboardLeads));
         const activeMob = localStorage.getItem('man_thru_active_vault_mobile');
         if (activeMob) {
@@ -3293,6 +3334,7 @@ Business: Man Thru B2B Network</textarea>
       } catch(e) {}
 
       activeAccountData = db[mobile];
+      restoreCurrentSearchResults(mobile);
       senderBusiness = user.businessName || user.name || 'Business ' + mobile.slice(-4);
       senderPhone = '+91 ' + mobile.slice(0, 5) + ' ' + mobile.slice(5);
 
@@ -3342,6 +3384,7 @@ Business: Man Thru B2B Network</textarea>
     function logoutVaultSession() {
       localStorage.removeItem('man_thru_active_vault_mobile');
       activeAccountData = null;
+      currentSearchTableLeads = [];
       senderBusiness = 'Man Thru';
       senderPhone = '+91 91600 86793';
       updateVaultHeaderAndUI();
@@ -3394,10 +3437,14 @@ Business: Man Thru B2B Network</textarea>
     }
 
     function openVaultModal(targetTab) {
-      updateVaultHeaderAndUI();
-      if (targetTab) switchAuthTab(targetTab);
-      document.getElementById('modalVault').classList.remove('hidden');
-      document.getElementById('modalVault').classList.add('flex');
+      const modal = document.getElementById('modalVault');
+      if (!modal) { console.error('Login/Register modal #modalVault was not found.'); return; }
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      try { updateVaultHeaderAndUI(); } catch (e) { console.error('Login modal UI refresh failed:', e); }
+      if (targetTab) {
+        try { switchAuthTab(targetTab); } catch (e) { console.error('Could not switch login tab:', e); }
+      }
     }
 
     function closeVaultModal() {
@@ -4335,6 +4382,7 @@ Business: Man Thru B2B Network</textarea>
       '9-7': { en: 'World Trade & Financial Planning Day', te: 'ప్రపంచ వాణిజ్య & ఫైనాన్షియల్ ప్లానింగ్ దినం', wish: 'Strategic business investments, low interest loans & massive sales!' },
       '9-11': { en: 'Bathukamma Floral Festival Celebration', te: 'బతుకమ్మ పండుగ శుభాకాంక్షలు', wish: 'పూల పండుగ బతుకమ్మ శుభవేళ మీ వాణిజ్యం విరబూయాలి!' },
       '9-12': { en: 'Vijaya Dasami (Dussehra) Shubh Vijayotsavam', te: 'విజయదశమి (దసరా) పర్వదిన శుభాకాంక్షలు', wish: 'శమీ శమయతే పాపం! వ్యాపార విజయాలు మీ సొంతం కావాలి!' },
+      '9-13': { en: 'International Day for Disaster Risk Reduction', te: 'అంతర్జాతీయ విపత్తు ప్రమాద తగ్గింపు దినోత్సవం', wish: 'Building resilient businesses, safer communities and stronger supply chains.' },
       '9-31': { en: 'National Unity Day (Sardar Patel Jayanti)', te: 'జాతీయ సమైక్యతా దినోత్సవం', wish: 'Iron determination and solid integrity in commercial leadership!' },
 
       '10-1': { en: 'Deepavali (Diwali) & Lakshmi Puja', te: 'దీపావళి లక్ష్మీ పూజా పర్వదిన శుభాకాంక్షలు', wish: 'లక్ష్మీదేవి కటాక్షంతో మీ వ్యాపారంలో ధనవర్షం కురవాలి!' },
@@ -4354,7 +4402,7 @@ Business: Man Thru B2B Network</textarea>
       if (SPECIAL_DAYS_365[key]) {
         return SPECIAL_DAYS_365[key];
       }
-      const dayOfYear = Math.floor((dateObj - new Date(dateObj.getFullYear(), 0, 0)) / (1000 * 60 * 60 * 24));
+      const dayOfYear = Math.floor((Date.UTC(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()) - Date.UTC(dateObj.getFullYear(), 0, 0)) / 86400000);
       const dailyThemes = [
         { en: 'B2B Wholesale Traders Prosperity Day', te: 'హోల్‌సేల్ వాణిజ్య సౌభాగ్య దినోత్సవం', wish: 'Accelerating bulk deliveries and high-margin wholesale contracts!' },
         { en: 'Retail Merchants Market Surge Day', te: 'రిటైల్ వ్యాపారుల విక్రయాల దినం', wish: 'Surging customer footfall and maximum cash counter turnover!' },
@@ -4476,6 +4524,26 @@ Business: Man Thru B2B Network</textarea>
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',installMapsPaste); else installMapsPaste();
   const observer=new MutationObserver(installMapsPaste);observer.observe(document.documentElement,{childList:true,subtree:true});setTimeout(()=>observer.disconnect(),15000);
+})();
+</script>
+
+
+<script id="manthru-auth-click-repair">
+(function(){
+  function bindManThruAuthButton(){
+    var btn=document.getElementById('btnVaultHeader');
+    if(!btn || btn.dataset.authRepairBound==='1') return;
+    btn.dataset.authRepairBound='1';
+    btn.addEventListener('click', function(ev){
+      ev.preventDefault();
+      var modal=document.getElementById('modalVault');
+      if(!modal){ console.error('Man Thru Login/Register modal is missing (#modalVault).'); return; }
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      if(typeof window.updateVaultHeaderAndUI==='function'){ try{window.updateVaultHeaderAndUI();}catch(e){console.error('Auth UI refresh failed',e);} }
+    });
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',bindManThruAuthButton); else bindManThruAuthButton();
 })();
 </script>
 

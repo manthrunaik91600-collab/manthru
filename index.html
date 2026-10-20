@@ -2879,15 +2879,31 @@ Business: Man Thru B2B Network</textarea>
 
     async function copyDiscoveryMobileNumbers() {
       const onlyMobile = document.getElementById('checkOnlyMobile')?.checked;
-      const leads = Array.isArray(currentSearchTableLeads) ? currentSearchTableLeads : [];
-      const numbers = [...new Set(leads
-        .filter(lead => !onlyMobile || isValidMobile(lead.phone || lead.mobile || lead.phoneNumber))
-        .map(lead => String(lead.phone || lead.mobile || lead.phoneNumber || '').replace(/\\D/g, '').slice(-10))
-        .filter(number => /^[6-9]\\d{9}$/.test(number)))];
+      // Read the currently rendered Discover Businesses table first, so copied numbers
+      // exactly match the rows the user can see and paste one per Excel row.
+      const tableRows = Array.from(document.querySelectorAll('#leadsTableBody tr'));
+      let numbers = tableRows.map(row => {
+        const cell = row.querySelectorAll('td')[2];
+        return cell ? cell.innerText.trim() : '';
+      }).map(value => {
+        const digits = value.replace(/\\D/g, '');
+        return digits.length >= 10 ? digits.slice(-10) : '';
+      }).filter(number => /^[6-9]\\d{9}$/.test(number));
+
       if (!numbers.length) {
-        showToast('No mobile numbers available in discovered businesses.');
+        const leads = Array.isArray(currentSearchTableLeads) ? currentSearchTableLeads : [];
+        numbers = leads
+          .filter(lead => !onlyMobile || isValidMobile(lead.phone || lead.mobile || lead.phoneNumber))
+          .map(lead => String(lead.phone || lead.mobile || lead.phoneNumber || '').replace(/\\D/g, '').slice(-10))
+          .filter(number => /^[6-9]\\d{9}$/.test(number));
+      }
+
+      numbers = [...new Set(numbers)];
+      if (!numbers.length) {
+        showToast('No mobile numbers found in the visible results. Run Discover Businesses first.');
         return;
       }
+
       const textToCopy = numbers.join('\\n');
       try {
         await navigator.clipboard.writeText(textToCopy);
@@ -2895,17 +2911,17 @@ Business: Man Thru B2B Network</textarea>
         const textarea = document.createElement('textarea');
         textarea.value = textToCopy;
         textarea.style.position = 'fixed';
-        textarea.style.opacity = '0';
+        textarea.style.left = '-9999px';
         document.body.appendChild(textarea);
         textarea.select();
         const copied = document.execCommand('copy');
         textarea.remove();
         if (!copied) {
-          showToast('Copy failed. Please allow clipboard access.');
+          showToast('Copy failed. Allow clipboard access and try again.');
           return;
         }
       }
-      showToast(numbers.length + ' mobile numbers copied — paste directly into Excel.');
+      showToast(numbers.length + ' mobile numbers copied — paste into Excel.');
     }
 
     function exportDashboardExcel() {

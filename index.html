@@ -3101,8 +3101,16 @@ gth + ' mobile numbers copied.');
       const cleanMob = (mobile || '').replace(/\D/g, '').slice(-10);
       const text = encodeURIComponent(`MAN THRU ${purpose} Security OTP: ${otp} for +91 ${cleanMob}. Valid for 5 minutes. Do not share.`);
       const url = `https://wa.me/91${cleanMob}?text=${text}`;
-      // Open WhatsApp directly in the same tab so browser popup blockers cannot block it.
-      window.location.href = url;
+      // Keep Man Thru open; launch the prefilled WhatsApp chat in a separate tab.
+      const waTab = window.open(url, '_blank');
+      if (waTab) {
+        try { waTab.opener = null; } catch (e) {}
+      } else {
+        showToast(currentLanguage === 'te'
+          ? 'WhatsApp ట్యాబ్ బ్లాక్ అయింది. అడ్రస్ బార్ దగ్గర Popup blocked అనుమతించి మళ్లీ Get WhatsApp OTP నొక్కండి.'
+          : 'WhatsApp tab was blocked. Allow pop-ups for this site, then click Get WhatsApp OTP again.');
+        return false;
+      }
       return true;
     }
 
@@ -3273,10 +3281,10 @@ gth + ' mobile numbers copied.');
       }
 
       const msgEl = document.getElementById('lblLoginOtpSentMsg');
-      if (msgEl) msgEl.innerText = isTe ? `+91 ${mobile} వాట్సాప్‌కు లాగిన్ OTP పంపబడింది. చూడండి.` : `Login OTP sent to +91 ${mobile} on WhatsApp.`;
+      if (msgEl) msgEl.innerText = isTe ? `WhatsAppలో OTP మెసేజ్ సిద్ధంగా ఉంది. WhatsApp ట్యాబ్‌లో Send నొక్కి, ఆ కోడ్‌ను ఇక్కడ ఎంటర్ చేయండి.` : `OTP message is prepared in WhatsApp. Press Send in the WhatsApp tab, then enter that code here.`;
 
-      dispatchWhatsAppOtp(mobile, loginGeneratedOtp, 'Login');
-      showToast(isTe ? `💬 +91 ${mobile} కు WhatsApp ద్వారా OTP పంపబడింది!` : `💬 WhatsApp OTP sent to +91 ${mobile}!`);
+      const opened = dispatchWhatsAppOtp(mobile, loginGeneratedOtp, 'Login');
+      if (opened) showToast(isTe ? 'WhatsAppలో మెసేజ్ సిద్ధంగా ఉంది — Send నొక్కండి.' : 'WhatsApp message is ready — press Send.');
     }
 
     function sendLoginOtpViaWhatsApp() {

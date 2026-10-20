@@ -3281,10 +3281,11 @@ gth + ' mobile numbers copied.');
       }
 
       const msgEl = document.getElementById('lblLoginOtpSentMsg');
-      if (msgEl) msgEl.innerText = isTe ? `WhatsAppలో OTP మెసేజ్ సిద్ధంగా ఉంది. WhatsApp ట్యాబ్‌లో Send నొక్కి, ఆ కోడ్‌ను ఇక్కడ ఎంటర్ చేయండి.` : `OTP message is prepared in WhatsApp. Press Send in the WhatsApp tab, then enter that code here.`;
-
-      const opened = dispatchWhatsAppOtp(mobile, loginGeneratedOtp, 'Login');
-      if (opened) showToast(isTe ? 'WhatsAppలో మెసేజ్ సిద్ధంగా ఉంది — Send నొక్కండి.' : 'WhatsApp message is ready — press Send.');
+      // No WhatsApp/SMS API is configured. Use the existing local OTP flow without falsely claiming delivery.
+      if (msgEl) msgEl.innerText = isTe
+        ? `WhatsApp API కనెక్ట్ కాలేదు. ఈ సెషన్ OTP: ${loginGeneratedOtp} — దీన్ని క్రింద ఎంటర్ చేయండి.`
+        : `No WhatsApp API is connected. Your local session OTP is: ${loginGeneratedOtp}. Enter it below.`;
+      showToast(isTe ? 'స్థానిక OTP సిద్ధంగా ఉంది.' : 'Local OTP is ready.');
     }
 
     function sendLoginOtpViaWhatsApp() {

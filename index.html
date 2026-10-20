@@ -3397,8 +3397,14 @@ Business: Man Thru B2B Network</textarea>
       // server-authoritative combined list. This keeps the same account's data
       // available across normal/incognito browsers and devices.
       try {
+        let cachedLeads = [];
+        try {
+          const cached = JSON.parse(localStorage.getItem(FRESH_DB_KEY) || '[]');
+          if (Array.isArray(cached)) cachedLeads = cached;
+        } catch(e) {}
         const localLeads = [
           ...(Array.isArray(user.leads) ? user.leads : []),
+          ...cachedLeads,
           ...(Array.isArray(dashboardLeads) ? dashboardLeads : [])
         ];
         if (localLeads.length > 0) {

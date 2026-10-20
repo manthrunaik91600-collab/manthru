@@ -3289,11 +3289,11 @@ gth + ' mobile numbers copied.');
       }
 
       const msgEl = document.getElementById('lblLoginOtpSentMsg');
-      // No WhatsApp/SMS API is configured. Use the existing local OTP flow without falsely claiming delivery.
       if (msgEl) msgEl.innerText = isTe
-        ? `WhatsApp API కనెక్ట్ కాలేదు. ఈ సెషన్ OTP: ${loginGeneratedOtp} — దీన్ని క్రింద ఎంటర్ చేయండి.`
-        : `No WhatsApp API is connected. Your local session OTP is: ${loginGeneratedOtp}. Enter it below.`;
-      showToast(isTe ? 'స్థానిక OTP సిద్ధంగా ఉంది.' : 'Local OTP is ready.');
+        ? 'WhatsApp తెరుచుకుంటుంది. అక్కడ Send నొక్కి, వచ్చిన OTP ఇక్కడ ఎంటర్ చేయండి.'
+        : 'WhatsApp is opening with your security message. Press Send in WhatsApp, then enter the OTP here.';
+      const opened = dispatchWhatsAppOtp(mobile, loginGeneratedOtp, isOwner ? 'Owner Super Admin' : 'Login');
+      if (opened) showToast(isTe ? 'WhatsApp తెరుచుకుంది — సందేశాన్ని Send చేయండి.' : 'WhatsApp opened — press Send to send the OTP message.');
     }
 
     function sendLoginOtpViaWhatsApp() {
@@ -4757,9 +4757,14 @@ gth + ' mobile numbers copied.');
       try{db=JSON.parse(localStorage.getItem('man_thru_users_directory_v2')||'{}')||{};}catch(e){}
       if(!db[activeMobile] && activeMobile!=='9160086793'){showOtp('This mobile number is not registered. Register first.');return;}
       localOtp=String(Math.floor(100000+Math.random()*900000));
-      showOtp('Local login OTP: '+localOtp+'. Enter this code below. No message was sent.');
+      var purpose=activeMobile==='9160086793'?'Owner Super Admin':'Login';
+      var message='MAN THRU '+purpose+' Security OTP: '+localOtp+' for +91 '+activeMobile+'. Valid for 5 minutes. Do not share.';
+      showOtp('WhatsApp opened with the security message. Press Send in WhatsApp, then enter the OTP here.');
+      var url='https://wa.me/91'+activeMobile+'?text='+encodeURIComponent(message);
+      var tab=window.open(url,'_blank');
+      if(!tab) showOtp('Popup blocked. Allow pop-ups for this site, then click Get WhatsApp OTP again.');
+      else { try{tab.opener=null;}catch(e){} }
     },true);
-
     var verifyBtn=document.getElementById('btnVerifyLoginOtp');
     if(verifyBtn) verifyBtn.addEventListener('click',function(ev){
       if(typeof window.handleVerifyLoginOtp==='function') return;

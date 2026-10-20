@@ -3101,7 +3101,11 @@ gth + ' mobile numbers copied.');
       const cleanMob = (mobile || '').replace(/\D/g, '').slice(-10);
       const text = encodeURIComponent(`MAN THRU ${purpose} Security OTP: ${otp} for +91 ${cleanMob}. Valid for 5 minutes. Do not share.`);
       const url = `https://wa.me/91${cleanMob}?text=${text}`;
-      window.open(url, '_blank');
+      const popup = window.open(url, '_blank', 'noopener,noreferrer');
+      if (!popup) {
+        // If the browser blocks a new tab, open WhatsApp in the current tab instead.
+        window.location.href = url;
+      }
       return true;
     }
 
@@ -3599,8 +3603,10 @@ gth + ' mobile numbers copied.');
     }
 
     function closeVaultModal() {
-      document.getElementById('modalVault').classList.add('hidden');
-      document.getElementById('modalVault').classList.remove('flex');
+      const modal = document.getElementById('modalVault');
+      if (!modal) return;
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
     }
 
     function openPaywallModal() {

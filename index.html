@@ -3433,7 +3433,7 @@ gth + ' mobile numbers copied.');
 
       // Complete the visible login immediately; cloud sync must not keep the user on the login screen.
       try { updateVaultHeaderAndUI(); } catch (e) { console.error('Login UI update failed:', e); }
-      try { closeVaultModal(); } catch (e) { console.error('Login modal close failed:', e); }
+      // Keep the account modal open so the logged-in profile is visible after OTP verification.
       try { renderDashboard(); } catch (e) { console.error('Dashboard render failed:', e); }
       try { renderTable(); } catch (e) { console.error('Lead table render failed:', e); }
 
@@ -3500,7 +3500,7 @@ gth + ' mobile numbers copied.');
       }
 
       updateVaultHeaderAndUI();
-      closeVaultModal();
+      // Keep the profile modal open after successful login.
       renderDashboard();
       renderTable();
 

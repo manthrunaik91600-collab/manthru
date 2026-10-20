@@ -3430,6 +3430,13 @@ gth + ' mobile numbers copied.');
       } catch(e) {}
 
       activeAccountData = db[mobile];
+
+      // Complete the visible login immediately; cloud sync must not keep the user on the login screen.
+      try { updateVaultHeaderAndUI(); } catch (e) { console.error('Login UI update failed:', e); }
+      try { closeVaultModal(); } catch (e) { console.error('Login modal close failed:', e); }
+      try { renderDashboard(); } catch (e) { console.error('Dashboard render failed:', e); }
+      try { renderTable(); } catch (e) { console.error('Lead table render failed:', e); }
+
       restoreCurrentSearchResults(mobile);
       senderBusiness = user.businessName || user.name || 'Business ' + mobile.slice(-4);
       senderPhone = '+91 ' + mobile.slice(0, 5) + ' ' + mobile.slice(5);

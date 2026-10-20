@@ -2873,19 +2873,22 @@ Business: Man Thru B2B Network</textarea>
       ['all', 'converted', 'contacted', 'followup', 'not_interested'].forEach(tab => {
         const b = document.getElementById('btnDashTab' + tab.charAt(0).toUpperCase() + tab.slice(1));
         if (b) b.className = tab === t ? 'px-3 py-1.5 rounded-xl bg-slate-900 text-white cursor-pointer' : 'px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 cursor-pointer';
-          async function copyDiscoveryMobileNumbers() {
-      const onlyMobile = document.getElementById('checkOnlyMobile') && document.getElementById('checkOnlyMobile').checked;
+      });
+      renderDashboardTable();
+    }
+
+    async function copyDiscoveryMobileNumbers() {
+      const onlyMobile = document.getElementById('checkOnlyMobile')?.checked;
       const leads = Array.isArray(currentSearchTableLeads) ? currentSearchTableLeads : [];
       const numbers = [...new Set(leads
-        .filter(lead => !onlyMobile || isValidMobile(lead.phone))
-        .map(lead => String(lead.phone || lead.mobile || lead.phoneNumber || '').trim())
-        .filter(Boolean))];
+        .filter(lead => !onlyMobile || isValidMobile(lead.phone || lead.mobile || lead.phoneNumber))
+        .map(lead => String(lead.phone || lead.mobile || lead.phoneNumber || '').replace(/\\D/g, '').slice(-10))
+        .filter(number => /^[6-9]\\d{9}$/.test(number)))];
       if (!numbers.length) {
-        if (typeof showToast === 'function') showToast('No mobile numbers available in discovered businesses.');
-        else alert('No mobile numbers available in discovered businesses.');
+        showToast('No mobile numbers available in discovered businesses.');
         return;
       }
-      const textToCopy = numbers.join('\n');
+      const textToCopy = numbers.join('\\n');
       try {
         await navigator.clipboard.writeText(textToCopy);
       } catch (err) {
@@ -2898,16 +2901,11 @@ Business: Man Thru B2B Network</textarea>
         const copied = document.execCommand('copy');
         textarea.remove();
         if (!copied) {
-          if (typeof showToast === 'function') showToast('Copy failed. Please allow clipboard access.');
-          else alert('Copy failed. Please allow clipboard access.');
+          showToast('Copy failed. Please allow clipboard access.');
           return;
         }
       }
-      if (typeof showToast === 'function') showToast(numbers.length + ' mobile numbers copied.');
-      else alert(numbers.length + ' mobile numbers copied.');
-    }
-
-gth + ' mobile numbers copied.');
+      showToast(numbers.length + ' mobile numbers copied — paste directly into Excel.');
     }
 
     function exportDashboardExcel() {

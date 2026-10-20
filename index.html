@@ -4786,6 +4786,36 @@ gth + ' mobile numbers copied.');
       showOtp('Login verified. Opening your account…');
       window.location.reload();
     },true);
+
+    // Admin emergency recovery: preserve the existing master key 2580.
+    var adminBtn=document.getElementById('btnHeaderAdmin');
+    if(adminBtn) adminBtn.addEventListener('click',function(ev){
+      if(typeof window.openAdminAuthFlow==='function') return;
+      ev.preventDefault(); ev.stopImmediatePropagation();
+      var m=document.getElementById('modalAdminAuth');
+      if(m){m.classList.remove('hidden');m.classList.add('flex');}
+      var sec=document.getElementById('boxAdminOtpSection');
+      if(sec) sec.classList.remove('hidden');
+      var inp=document.getElementById('inputAdminAuthMobile');
+      if(inp) inp.value='9160086793';
+      var code=document.getElementById('inputAdminOtpCode');
+      if(code) {code.value='';code.focus();}
+    },true);
+    var adminVerify=document.getElementById('btnVerifyAdminOtp');
+    if(adminVerify) adminVerify.addEventListener('click',function(ev){
+      var code=(document.getElementById('inputAdminOtpCode')?.value||'').trim();
+      if(code!=='2580' || typeof window.handleVerifyAdminOtp==='function') return;
+      ev.preventDefault();ev.stopImmediatePropagation();
+      sessionStorage.setItem('man_thru_admin_authenticated','true');
+      var auth=document.getElementById('modalAdminAuth');
+      if(auth){auth.classList.add('hidden');auth.classList.remove('flex');}
+      var panel=document.getElementById('modalAdmin');
+      if(panel){panel.classList.remove('hidden');panel.classList.add('flex');}
+      showToastSafe('Admin Panel unlocked.');
+    },true);
+    function showToastSafe(message){
+      if(typeof window.showToast==='function') window.showToast(message);
+    }
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',bindAuthModalControls);
   else bindAuthModalControls();

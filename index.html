@@ -352,9 +352,6 @@
             </button>
           </div>
           <div class="flex items-center gap-2">
-            <button onclick="copyDashboardMobileNumbers()" class="text-blue-700 hover:text-blue-800 font-bold text-xs cursor-pointer border border-blue-200 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-xl transition" title="Copy mobile numbers">
-              <span>📋 Copy Mobile Number</span>
-            </button>
             <button onclick="clearDashboardLeadsOnly()" class="text-rose-600 hover:text-rose-700 font-bold text-xs cursor-pointer border border-rose-200 bg-rose-50 hover:bg-rose-100 px-3 py-1.5 rounded-xl transition" title="Clear Table / Leads">
               <span id="btnClearDashTableText">🗑️ Clear Table / Leads</span>
             </button>
@@ -422,6 +419,9 @@
               <input id="checkOnlyMobile" type="checkbox" checked="" onchange="renderTable()" class="rounded text-sky-600 w-4 h-4 cursor-pointer">
               <span id="lblOnlyMobileText">📱 Only With Mobile Numbers</span>
             </label>
+            <button type="button" onclick="copyDiscoveryMobileNumbers()" class="text-blue-700 hover:text-blue-800 font-bold text-xs cursor-pointer border border-blue-200 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-xl transition" title="Copy mobile numbers from discovered businesses">
+              <span>📋 Copy Mobile Number</span>
+            </button>
           </div>
           <div class="flex items-center gap-1.5">
             <span id="lblLeadsToFetchText" class="text-slate-500 font-semibold">Leads to Fetch:</span>
@@ -2865,17 +2865,16 @@ Business: Man Thru B2B Network</textarea>
       ['all', 'converted', 'contacted', 'followup', 'not_interested'].forEach(tab => {
         const b = document.getElementById('btnDashTab' + tab.charAt(0).toUpperCase() + tab.slice(1));
         if (b) b.className = tab === t ? 'px-3 py-1.5 rounded-xl bg-slate-900 text-white cursor-pointer' : 'px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 cursor-pointer';
-      });
-      renderDashboardTable();
-    }
-
-    async function copyDashboardMobileNumbers() {
-      const numbers = [...new Set((Array.isArray(dashboardLeads) ? dashboardLeads : [])
+          async function copyDiscoveryMobileNumbers() {
+      const onlyMobile = document.getElementById('checkOnlyMobile') && document.getElementById('checkOnlyMobile').checked;
+      const leads = Array.isArray(currentSearchTableLeads) ? currentSearchTableLeads : [];
+      const numbers = [...new Set(leads
+        .filter(lead => !onlyMobile || isValidMobile(lead.phone))
         .map(lead => String(lead.phone || lead.mobile || lead.phoneNumber || '').trim())
         .filter(Boolean))];
       if (!numbers.length) {
-        if (typeof showToast === 'function') showToast('No mobile numbers available to copy.');
-        else alert('No mobile numbers available to copy.');
+        if (typeof showToast === 'function') showToast('No mobile numbers available in discovered businesses.');
+        else alert('No mobile numbers available in discovered businesses.');
         return;
       }
       const textToCopy = numbers.join('\n');
@@ -2898,6 +2897,9 @@ Business: Man Thru B2B Network</textarea>
       }
       if (typeof showToast === 'function') showToast(numbers.length + ' mobile numbers copied.');
       else alert(numbers.length + ' mobile numbers copied.');
+    }
+
+gth + ' mobile numbers copied.');
     }
 
     function exportDashboardExcel() {

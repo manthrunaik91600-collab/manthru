@@ -352,6 +352,9 @@
             </button>
           </div>
           <div class="flex items-center gap-2">
+            <button onclick="copyDashboardMobileNumbers()" class="text-blue-700 hover:text-blue-800 font-bold text-xs cursor-pointer border border-blue-200 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-xl transition" title="Copy mobile numbers">
+              <span>📋 Copy Mobile Number</span>
+            </button>
             <button onclick="clearDashboardLeadsOnly()" class="text-rose-600 hover:text-rose-700 font-bold text-xs cursor-pointer border border-rose-200 bg-rose-50 hover:bg-rose-100 px-3 py-1.5 rounded-xl transition" title="Clear Table / Leads">
               <span id="btnClearDashTableText">🗑️ Clear Table / Leads</span>
             </button>
@@ -2864,6 +2867,37 @@ Business: Man Thru B2B Network</textarea>
         if (b) b.className = tab === t ? 'px-3 py-1.5 rounded-xl bg-slate-900 text-white cursor-pointer' : 'px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 cursor-pointer';
       });
       renderDashboardTable();
+    }
+
+    async function copyDashboardMobileNumbers() {
+      const numbers = [...new Set((Array.isArray(dashboardLeads) ? dashboardLeads : [])
+        .map(lead => String(lead.phone || lead.mobile || lead.phoneNumber || '').trim())
+        .filter(Boolean))];
+      if (!numbers.length) {
+        if (typeof showToast === 'function') showToast('No mobile numbers available to copy.');
+        else alert('No mobile numbers available to copy.');
+        return;
+      }
+      const textToCopy = numbers.join('\n');
+      try {
+        await navigator.clipboard.writeText(textToCopy);
+      } catch (err) {
+        const textarea = document.createElement('textarea');
+        textarea.value = textToCopy;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        const copied = document.execCommand('copy');
+        textarea.remove();
+        if (!copied) {
+          if (typeof showToast === 'function') showToast('Copy failed. Please allow clipboard access.');
+          else alert('Copy failed. Please allow clipboard access.');
+          return;
+        }
+      }
+      if (typeof showToast === 'function') showToast(numbers.length + ' mobile numbers copied.');
+      else alert(numbers.length + ' mobile numbers copied.');
     }
 
     function exportDashboardExcel() {

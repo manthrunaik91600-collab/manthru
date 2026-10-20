@@ -3772,6 +3772,28 @@ gth + ' mobile numbers copied.');
       showToast('Admin session logged out.');
     }
 
+    // Inline modal buttons need these scoped functions on window.
+    window.closeAdminModal = closeAdminModal;
+    window.handleAdminLogout = handleAdminLogout;
+    window.closeAdminAuthModal = closeAdminAuthModal;
+    window.openAdminAuthFlow = openAdminAuthFlow;
+    window.handleSendAdminOtp = handleSendAdminOtp;
+    window.handleVerifyAdminOtp = handleVerifyAdminOtp;
+
+    // Bind the admin close/logout actions directly as a resilient fallback.
+    document.querySelector('#modalAdmin button[onclick*="handleAdminLogout"]')?.addEventListener('click', function(ev) {
+      ev.preventDefault(); ev.stopPropagation();
+      sessionStorage.removeItem('man_thru_admin_authenticated');
+      const panel = document.getElementById('modalAdmin');
+      if (panel) { panel.classList.add('hidden'); panel.classList.remove('flex'); }
+      showToast('Admin session logged out.');
+    }, true);
+    document.querySelector('#modalAdmin button[onclick*="closeAdminModal"]')?.addEventListener('click', function(ev) {
+      ev.preventDefault(); ev.stopPropagation();
+      const panel = document.getElementById('modalAdmin');
+      if (panel) { panel.classList.add('hidden'); panel.classList.remove('flex'); }
+    }, true);
+
     let adminTargetDeleteMobile = '';
     let adminTargetDeleteName = '';
 

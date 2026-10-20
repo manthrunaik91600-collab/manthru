@@ -3439,6 +3439,57 @@ Business: Man Thru B2B Network</textarea>
       }
     }
 
+    // Sync the active account with the shared server every 5 seconds.
+    // localStorage is only a browser cache; the server list is shared between devices.
+    let accountLeadSyncBusy = false;
+    async function syncActiveAccountLeads() {
+      const mobile = localStorage.getItem('man_thru_active_vault_mobile');
+      if (!mobile || accountLeadSyncBusy) return;
+      accountLeadSyncBusy = true;
+      try {
+        const res = await apiFetch('/api/user/leads?mobile=' + encodeURIComponent(mobile), { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!Array.isArray(data.leads)) return;
+        const cloud = data.leads;
+        const local = Array.isArray(dashboardLeads) ? dashboardLeads : [];
+        const keyOf = l => String(l.placeId || l.id || ((l.name || '') + '_' + (l.address || '')).toLowerCase());
+        if (local.length === 0 && cloud.length > 0) {
+          dashboardLeads = cloud;
+          localStorage.setItem(FRESH_DB_KEY, JSON.stringify(cloud));
+          const db = getUsersDb();
+          if (db[mobile]) { db[mobile].leads = cloud; saveUsersDb(db); }
+          renderDashboard(); renderTable();
+        } else if (local.length > 0) {
+          const merged = new Map(cloud.map(l => [keyOf(l), l]));
+          for (const lead of local) merged.set(keyOf(lead), { ...(merged.get(keyOf(lead)) || {}), ...lead });
+          const combined = Array.from(merged.values());
+          const changed = combined.length !== cloud.length || combined.some(l => {
+            const old = cloud.find(x => keyOf(x) === keyOf(l));
+            return !old || JSON.stringify(old) !== JSON.stringify(l);
+          });
+          if (changed) {
+            const put = await apiFetch('/api/user/leads', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ mobile, leads: combined })
+            });
+            if (put.ok) {
+              dashboardLeads = combined;
+              localStorage.setItem(FRESH_DB_KEY, JSON.stringify(combined));
+              const db = getUsersDb();
+              if (db[mobile]) { db[mobile].leads = combined; saveUsersDb(db); }
+              renderDashboard(); renderTable();
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Account cloud sync failed', e);
+      } finally {
+        accountLeadSyncBusy = false;
+      }
+    }
+    setInterval(syncActiveAccountLeads, 5000);
+
     function logoutVaultSession() {
       localStorage.removeItem('man_thru_active_vault_mobile');
       activeAccountData = null;

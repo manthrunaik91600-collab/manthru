@@ -2053,7 +2053,7 @@ Business: Man Thru B2B Network</textarea>
       if (!isCooldownActive()) return;
       const target = event.target instanceof Element ? event.target : null;
       // Login/register must remain usable during the outreach cooldown; the cooldown only locks outreach actions.
-      if (target && target.closest('#modalVault')) return;
+      if (target && target.closest('#modalVault, #modalAdminAuth, #modalAdmin')) return;
       if (event.type === 'click' && target && target.closest('#btnCooldownClose')) return;
       event.preventDefault();
       event.stopPropagation();

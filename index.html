@@ -3101,7 +3101,8 @@ gth + ' mobile numbers copied.');
       const cleanMob = (mobile || '').replace(/\D/g, '').slice(-10);
       const text = encodeURIComponent(`MAN THRU ${purpose} Security OTP: ${otp} for +91 ${cleanMob}. Valid for 5 minutes. Do not share.`);
       const url = `https://wa.me/91${cleanMob}?text=${text}`;
-      const popup = window.open(url, '_blank', 'noopener,noreferrer');
+      const popup = window.open(url, '_blank');
+      if (popup) popup.opener = null;
       if (!popup) {
         // If the browser blocks a new tab, open WhatsApp in the current tab instead.
         window.location.href = url;

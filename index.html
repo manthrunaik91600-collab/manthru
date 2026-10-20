@@ -4720,24 +4720,35 @@ gth + ' mobile numbers copied.');
     var modal=document.getElementById('modalVault');
     if(!modal || modal.dataset.hardClickFix==='1') return;
     modal.dataset.hardClickFix='1';
-    // Capture the close click before other handlers; force-hide the modal inline.
     var closeBtn=modal.querySelector('button[onclick*="closeVaultModal"]');
     if(closeBtn){
       closeBtn.addEventListener('click',function(ev){
-        ev.preventDefault();
-        ev.stopImmediatePropagation();
+        ev.preventDefault(); ev.stopImmediatePropagation();
         modal.style.setProperty('display','none','important');
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
+        modal.classList.add('hidden'); modal.classList.remove('flex');
       },true);
     }
-    // Ensure the login button invokes the existing OTP flow even if inline handlers fail.
     var otpBtn=document.getElementById('btnSendLoginOtp');
     if(otpBtn){
       otpBtn.addEventListener('click',function(ev){
-        ev.preventDefault();
-        ev.stopImmediatePropagation();
-        if(typeof window.handleSendLoginOtp==='function') window.handleSendLoginOtp();
+        ev.preventDefault(); ev.stopImmediatePropagation();
+        try {
+          if(typeof window.handleSendLoginOtp==='function') {
+            window.handleSendLoginOtp();
+          } else {
+            var msg=document.getElementById('lblLoginOtpSentMsg');
+            var sec=document.getElementById('boxLoginOtpSection');
+            if(msg) msg.innerText='Login OTP handler failed to load. Please refresh the page and try again.';
+            if(sec) sec.classList.remove('hidden');
+            console.error('ManThru OTP: handleSendLoginOtp is unavailable; main application script may have failed.');
+          }
+        } catch(err) {
+          console.error('ManThru OTP click failed:',err);
+          var msg=document.getElementById('lblLoginOtpSentMsg');
+          var sec=document.getElementById('boxLoginOtpSection');
+          if(msg) msg.innerText='OTP could not be generated: '+(err && err.message ? err.message : 'script error')+'. Please refresh and try again.';
+          if(sec) sec.classList.remove('hidden');
+        }
       },true);
     }
   }

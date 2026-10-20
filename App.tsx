@@ -341,8 +341,7 @@ export default function App() {
   };
 
 
-  // Export an Excel-friendly outreach worksheet for contacts who have consented.
-  // The Message and WhatsApp Consent columns are intentionally blank for user review.
+  // Export the filtered Leads table in the exact Excel column order requested.
   const handleExportWhatsAppCSV = () => {
     if (filteredLeads.length === 0) {
       triggerToast('No filtered leads to export.');
@@ -351,32 +350,27 @@ export default function App() {
 
     const escapeCsv = (value: unknown) => {
       let text = String(value ?? '');
-      // Prevent spreadsheet formula execution when opening untrusted lead data.
       if (/^[=+@-]/.test(text)) text = "'" + text;
       return '"' + text.replace(/"/g, '""') + '"';
     };
 
     const headers = [
-      'Phone',
-      'Message',
-      'WhatsApp Consent',
+      'S.No',
       'Business Name',
-      'Category',
+      'Phone Number',
+      'Message',
+      'Image / Image Path',
       'Area',
-      'Address',
-      'Website',
-      'Lead Status',
+      'Category',
     ];
-    const rows = filteredLeads.map((lead) => [
+    const rows = filteredLeads.map((lead, index) => [
+      index + 1,
+      lead.name,
       lead.phone,
       '',
       '',
-      lead.name,
-      lead.category,
       lead.area,
-      lead.address,
-      lead.website || '',
-      lead.status,
+      lead.category,
     ]);
 
     // UTF-8 BOM helps Excel display Telugu and other Unicode text correctly.
@@ -387,12 +381,12 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `ManThru_WhatsApp_Excel_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `ManThru_Excel_Export_${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    triggerToast('Excel-friendly CSV exported. Fill Message only for opted-in contacts.');
+    triggerToast('Excel export downloaded successfully.');
   };
 
   // Filtered Leads
@@ -970,7 +964,7 @@ export default function App() {
                   title="Exports filtered leads in Excel-friendly Phone/Message column order. Message and consent are left blank for review."
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5" />
-                  <span>Excel Outreach Export</span>
+                  <span>Excel Export</span>
                 </button>
               </div>
             </div>

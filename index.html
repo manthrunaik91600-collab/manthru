@@ -1852,6 +1852,12 @@ Business: Man Thru B2B Network</textarea>
   </div>
 
   <script>
+    // Expose the existing auth handlers immediately. Function declarations are hoisted,
+    // so the modal can call them even if a later dashboard initializer throws.
+    window.handleSendLoginOtp = handleSendLoginOtp;
+    window.handleVerifyLoginOtp = handleVerifyLoginOtp;
+    window.sendLoginOtpViaWhatsApp = sendLoginOtpViaWhatsApp;
+
     const FRESH_DB_KEY = 'man_thru_pure_empty_v6_fresh';
     let dashboardLeads = [];
     let senderBusiness = localStorage.getItem('man_thru_sender_business') || 'Man Thru';

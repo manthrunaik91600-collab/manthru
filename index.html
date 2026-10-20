@@ -3507,8 +3507,8 @@ gth + ' mobile numbers copied.');
       if (isSubscriptionValid()) {
         showToast(isTe ? `✓ స్వాగతం ${senderBusiness}!` : `✓ Welcome ${senderBusiness}!`);
       } else {
+        // Keep the profile visible after OTP login. Payment activation is handled separately.
         showToast(isTe ? 'సెర్చ్ కోసం ₹499 పేమెంట్ చేసి 12-అంకెల UTR పంపండి.' : 'Pay ₹499 and submit 12-digit UTR to activate search.');
-        openPaywallModal();
       }
     }
 

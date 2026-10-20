@@ -3406,6 +3406,12 @@ gth + ' mobile numbers copied.');
       if (pinInp) pinInp.value = newPin;
     }
 
+    // Keep the existing local OTP flow callable from the modal's inline controls.
+    // These functions live inside the app's initialization scope, so explicitly expose them.
+    window.handleSendLoginOtp = handleSendLoginOtp;
+    window.handleVerifyLoginOtp = handleVerifyLoginOtp;
+    window.sendLoginOtpViaWhatsApp = sendLoginOtpViaWhatsApp;
+
     async function finalizeUserLogin(mobile, user) {
       const isTe = currentLanguage === 'te';
       localStorage.setItem('man_thru_active_vault_mobile', mobile);

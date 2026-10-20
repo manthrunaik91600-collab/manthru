@@ -3393,16 +3393,38 @@ Business: Man Thru B2B Network</textarea>
         }
       } catch(e) {}
 
-      // Sync server leads
+      // Merge this browser's leads into the server account, then restore the
+      // server-authoritative combined list. This keeps the same account's data
+      // available across normal/incognito browsers and devices.
       try {
+        const localLeads = [
+          ...(Array.isArray(user.leads) ? user.leads : []),
+          ...(Array.isArray(dashboardLeads) ? dashboardLeads : [])
+        ];
+        if (localLeads.length > 0) {
+          await apiFetch('/api/user/leads', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mobile, leads: localLeads })
+          });
+        }
         const lRes = await apiFetch('/api/user/leads?mobile=' + encodeURIComponent(mobile));
         if (lRes.ok) {
           const lData = await lRes.json();
-          if (lData.leads && Array.isArray(lData.leads) && lData.leads.length > 0) {
+          if (Array.isArray(lData.leads)) {
             dashboardLeads = lData.leads;
+            db[mobile].leads = dashboardLeads;
+            saveUsersDb(db);
+            activeAccountData = db[mobile];
+            try {
+              localStorage.setItem('man_thru_vault_acc_' + mobile, JSON.stringify(db[mobile]));
+            } catch(e) {}
+            localStorage.setItem(FRESH_DB_KEY, JSON.stringify(dashboardLeads));
           }
         }
-      } catch(e) {}
+      } catch(e) {
+        console.warn('Cloud lead sync failed; keeping local data', e);
+      }
 
       updateVaultHeaderAndUI();
       closeVaultModal();

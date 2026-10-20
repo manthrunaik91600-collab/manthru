@@ -355,6 +355,9 @@
             <button onclick="clearDashboardLeadsOnly()" class="text-rose-600 hover:text-rose-700 font-bold text-xs cursor-pointer border border-rose-200 bg-rose-50 hover:bg-rose-100 px-3 py-1.5 rounded-xl transition" title="Clear Table / Leads">
               <span id="btnClearDashTableText">🗑️ Clear Table / Leads</span>
             </button>
+            <button onclick="exportDashboardExcel()" class="text-emerald-700 hover:text-emerald-800 font-bold text-xs cursor-pointer border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-xl transition flex items-center gap-1.5" title="Export leads in the requested Excel column format">
+              <span>📊 Excel Export</span>
+            </button>
             <div class="relative min-w-[220px]">
               <input id="inputDashboardSearch" oninput="renderDashboardTable()" type="text" placeholder="Search by shop or area..." class="w-full px-3.5 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold">
             </div>
@@ -2861,6 +2864,39 @@ Business: Man Thru B2B Network</textarea>
         if (b) b.className = tab === t ? 'px-3 py-1.5 rounded-xl bg-slate-900 text-white cursor-pointer' : 'px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 cursor-pointer';
       });
       renderDashboardTable();
+    }
+
+    function exportDashboardExcel() {
+      if (!Array.isArray(dashboardLeads) || dashboardLeads.length === 0) {
+        if (typeof showToast === 'function') showToast('No leads available to export.');
+        else alert('No leads available to export.');
+        return;
+      }
+      const headers = ['S.No', 'Business Name', 'Phone Number', 'Message', 'Image / Image Path', 'Area', 'Category'];
+      const escapeCell = (value) => {
+        let text = String(value ?? '');
+        if (/^[=+@-]/.test(text)) text = "'" + text;
+        return '"' + text.replace(/"/g, '""') + '"';
+      };
+      const rows = dashboardLeads.map((lead, index) => [
+        index + 1,
+        lead.name || lead.businessName || '',
+        lead.phone || lead.mobile || '',
+        '',
+        '',
+        lead.area || '',
+        lead.category || lead.type || ''
+      ]);
+      const csv = '\\uFEFF' + [headers, ...rows].map(row => row.map(escapeCell).join(',')).join('\\r\\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'ManThru_Excel_Export_' + new Date().toISOString().slice(0, 10) + '.csv';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
     }
 
     function renderDashboardTable() {

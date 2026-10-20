@@ -4767,6 +4767,7 @@ gth + ' mobile numbers copied.');
     },true);
     var verifyBtn=document.getElementById('btnVerifyLoginOtp');
     if(verifyBtn) verifyBtn.addEventListener('click',function(ev){
+      if(typeof window.handleVerifyLoginOtp==='function') return;
       ev.preventDefault(); ev.stopImmediatePropagation();
       var mobile=activeMobile||(document.getElementById('inputLoginMobile')?.value||'').replace(/\D/g,'').slice(-10);
       var entered=(document.getElementById('inputLoginOtpCode')?.value||'').trim();

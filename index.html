@@ -4701,6 +4701,38 @@ gth + ' mobile numbers copied.');
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',bindManThruAuthButton); else bindManThruAuthButton();
 })();
+
+<script id="manthru-auth-modal-click-guard">
+(function(){
+  function bindAuthModalControls(){
+    var modal=document.getElementById('modalVault');
+    if(!modal || modal.dataset.hardClickFix==='1') return;
+    modal.dataset.hardClickFix='1';
+    // Capture the close click before other handlers; force-hide the modal inline.
+    var closeBtn=modal.querySelector('button[onclick*="closeVaultModal"]');
+    if(closeBtn){
+      closeBtn.addEventListener('click',function(ev){
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        modal.style.setProperty('display','none','important');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      },true);
+    }
+    // Ensure the login button invokes the existing OTP flow even if inline handlers fail.
+    var otpBtn=document.getElementById('btnSendLoginOtp');
+    if(otpBtn){
+      otpBtn.addEventListener('click',function(ev){
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        if(typeof window.handleSendLoginOtp==='function') window.handleSendLoginOtp();
+      },true);
+    }
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',bindAuthModalControls);
+  else bindAuthModalControls();
+})();
+</script>
 </script>
 
 </body>
